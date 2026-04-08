@@ -13,6 +13,7 @@
     stock-ai analyze(a)/test-llm                      LLM 深度分析
     stock-ai alert-*(al-*)/watch(wa)                  实时监控/条件预警
     stock-ai bt/bt-list/bt-compare                    回测引擎
+    stock-ai dashboard(d)                             TUI 全屏面板
 """
 
 import sys
@@ -3069,6 +3070,25 @@ def init():
     console.print("  数据库已创建")
     console.print("  数据目录已就绪")
     console.print("\n使用 [bold]stock-ai --help[/bold] 查看所有命令")
+
+
+# --- TUI Dashboard ---
+@app.command("dashboard", help="启动 TUI 全屏 Dashboard (缩写: d)")
+def dashboard(
+    interval: int = typer.Option(30, "--interval", "-i", help="自动刷新间隔(秒)"),
+):
+    """启动全屏交互式 Dashboard"""
+    from app.tui.app import run_dashboard
+    run_dashboard(refresh_interval=float(interval))
+
+
+@app.command("d", hidden=True)
+def alias_d(
+    interval: int = typer.Option(30, "--interval", "-i", help="自动刷新间隔(秒)"),
+):
+    """dashboard 的缩写"""
+    from app.tui.app import run_dashboard
+    run_dashboard(refresh_interval=float(interval))
 
 
 if __name__ == "__main__":

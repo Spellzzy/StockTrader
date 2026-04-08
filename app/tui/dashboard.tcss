@@ -1,0 +1,163 @@
+/* ===== Stock Trader AI — TUI Dashboard 样式表 ===== */
+
+/* ---------- 全局 ---------- */
+Screen {
+    layout: vertical;
+    background: $surface;
+}
+
+/* ---------- 顶部标题栏 ---------- */
+#header-bar {
+    dock: top;
+    height: 1;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+    content-align: center middle;
+    padding: 0 2;
+}
+
+/* ---------- 主体区域 (三列) ---------- */
+#main-body {
+    layout: horizontal;
+    height: 1fr;
+    min-height: 10;
+}
+
+/* 左侧：自选股侧边栏 */
+#watchlist-sidebar {
+    width: 26;
+    min-width: 22;
+    max-width: 32;
+    border-right: solid $primary-lighten-2;
+}
+
+#watchlist-sidebar .sidebar-title {
+    dock: top;
+    height: 1;
+    background: $primary-darken-1;
+    color: $text;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#watchlist-sidebar ListView {
+    height: 1fr;
+}
+
+#watchlist-sidebar ListItem {
+    height: 2;
+    padding: 0 1;
+}
+
+#watchlist-sidebar ListItem:hover {
+    background: $surface-lighten-1;
+}
+
+#watchlist-sidebar ListItem.-selected {
+    background: $primary 30%;
+}
+
+/* 中间：实时行情面板 */
+#quote-panel {
+    width: 1fr;
+    min-width: 40;
+    border-right: solid $primary-lighten-2;
+    padding: 0 1;
+}
+
+#quote-panel .panel-title {
+    dock: top;
+    height: 1;
+    background: $primary-darken-1;
+    color: $text;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#quote-table {
+    height: 1fr;
+}
+
+/* 右侧：预警日志 */
+#alert-log {
+    width: 30;
+    min-width: 24;
+    max-width: 40;
+}
+
+#alert-log .panel-title {
+    dock: top;
+    height: 1;
+    background: $primary-darken-1;
+    color: $text;
+    text-style: bold;
+    padding: 0 1;
+}
+
+#alert-log RichLog {
+    height: 1fr;
+    padding: 0 1;
+}
+
+/* ---------- 底部 Tab 区 ---------- */
+#bottom-tabs {
+    height: 12;
+    min-height: 8;
+    max-height: 20;
+    border-top: solid $primary-lighten-2;
+}
+
+#bottom-tabs TabbedContent {
+    height: 1fr;
+}
+
+#bottom-tabs ContentSwitcher {
+    height: 1fr;
+}
+
+#bottom-tabs TabPane {
+    padding: 0 1;
+}
+
+/* ---------- 底部状态栏 ---------- */
+#status-bar {
+    dock: bottom;
+    height: 1;
+    background: $primary;
+    color: $text;
+    padding: 0 1;
+}
+
+/* ---------- 通用: DataTable 样式 ---------- */
+DataTable {
+    height: 1fr;
+}
+
+DataTable > .datatable--header {
+    text-style: bold;
+    color: $text;
+    background: $primary-darken-2;
+}
+
+DataTable > .datatable--cursor {
+    background: $primary 40%;
+}
+
+/* ---------- 涨跌颜色 ---------- */
+.price-up {
+    color: $error;
+}
+
+.price-down {
+    color: $success;
+}
+
+.price-flat {
+    color: $text-muted;
+}
+
+/* ---------- Loading 覆盖层 ---------- */
+LoadingIndicator {
+    color: $primary;
+}

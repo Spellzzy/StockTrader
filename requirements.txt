@@ -29,5 +29,8 @@ joblib>=1.3.0
 # AI / LLM（分析模块）
 httpx>=0.27.0              # LLM API 调用
 
+# TUI Dashboard
+textual>=0.70.0            # Textual TUI 框架
+
 # AI / DL（可选，深度学习预测）
 # torch>=2.1.0          # 按需安装: pip install torch

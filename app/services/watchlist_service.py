@@ -1,6 +1,6 @@
 """自选股/收藏列表服务"""
 
-from typing import List, Optional
+from typing import List
 from datetime import datetime
 
 from sqlalchemy import select
@@ -18,6 +18,15 @@ class WatchlistService:
     def __init__(self):
         self.session = get_session()
 
+    def _ensure_session(self):
+        """确保 session 处于可用状态（如果之前发生了事务回滚就重置）"""
+        try:
+            # 检测 session 是否处于无效状态
+            if not self.session.is_active:
+                self.session.rollback()
+        except Exception:
+            self.session.rollback()
+
     # ==================== 添加收藏 ====================
 
     def add_watch(self, stock_code: str, note: str = "") -> Stock:
@@ -30,41 +39,47 @@ class WatchlistService:
         Returns:
             Stock 对象
         """
-        # 检查是否已存在
-        stock = self.session.execute(
-            select(Stock).where(Stock.code == stock_code)
-        ).scalar_one_or_none()
+        self._ensure_session()
 
-        if stock:
-            # 已存在，更新关注状态
-            stock.is_watched = True
-            if note:
-                stock.watch_note = note
-            stock.updated_at = datetime.now()
-        else:
-            # 不存在，先查询名称再创建
-            stock_name = ""
-            market = Stock.parse_market(stock_code)
-            try:
-                from app.data.stock_data_client import StockDataClient
-                client = StockDataClient()
-                quote_data = client.quote(stock_code)
-                stock_name = quote_data.get(stock_code, {}).get("name", "")
-            except Exception:
-                pass
+        try:
+            # 检查是否已存在
+            stock = self.session.execute(
+                select(Stock).where(Stock.code == stock_code)
+            ).scalar_one_or_none()
 
-            stock = Stock(
-                code=stock_code,
-                name=stock_name,
-                market=market,
-                is_watched=True,
-                watch_note=note or None,
-            )
-            self.session.add(stock)
+            if stock:
+                # 已存在，更新关注状态
+                stock.is_watched = True
+                if note:
+                    stock.watch_note = note
+                stock.updated_at = datetime.now()
+            else:
+                # 不存在，先查询名称再创建
+                stock_name = ""
+                market = Stock.parse_market(stock_code)
+                try:
+                    from app.data.stock_data_client import StockDataClient
+                    client = StockDataClient()
+                    quote_data = client.quote(stock_code)
+                    stock_name = quote_data.get(stock_code, {}).get("name", "")
+                except Exception:
+                    pass
 
-        self.session.commit()
-        self.session.refresh(stock)
-        return stock
+                stock = Stock(
+                    code=stock_code,
+                    name=stock_name,
+                    market=market,
+                    is_watched=True,
+                    watch_note=note or None,
+                )
+                self.session.add(stock)
+
+            self.session.commit()
+            self.session.refresh(stock)
+            return stock
+        except Exception:
+            self.session.rollback()
+            raise
 
     # ==================== 删除收藏 ====================
 
@@ -77,17 +92,23 @@ class WatchlistService:
         Returns:
             是否成功取消
         """
-        stock = self.session.execute(
-            select(Stock).where(Stock.code == stock_code)
-        ).scalar_one_or_none()
+        self._ensure_session()
 
-        if not stock:
-            return False
+        try:
+            stock = self.session.execute(
+                select(Stock).where(Stock.code == stock_code)
+            ).scalar_one_or_none()
 
-        stock.is_watched = False
-        stock.updated_at = datetime.now()
-        self.session.commit()
-        return True
+            if not stock:
+                return False
+
+            stock.is_watched = False
+            stock.updated_at = datetime.now()
+            self.session.commit()
+            return True
+        except Exception:
+            self.session.rollback()
+            raise
 
     # ==================== 查询收藏列表 ====================
 
@@ -97,12 +118,18 @@ class WatchlistService:
         Returns:
             自选股列表
         """
-        result = self.session.execute(
-            select(Stock)
-            .where(Stock.is_watched == True)
-            .order_by(Stock.updated_at.desc())
-        )
-        return list(result.scalars().all())
+        self._ensure_session()
+
+        try:
+            result = self.session.execute(
+                select(Stock)
+                .where(Stock.is_watched == True)
+                .order_by(Stock.updated_at.desc())
+            )
+            return list(result.scalars().all())
+        except Exception:
+            self.session.rollback()
+            raise
 
     # ==================== 带行情的收藏列表 ====================
 
@@ -136,7 +163,7 @@ class WatchlistService:
                     s.name = name
                     self.session.commit()
                 except Exception:
-                    pass
+                    self.session.rollback()
 
             result.append({
                 "code": s.code,
@@ -169,14 +196,20 @@ class WatchlistService:
         Returns:
             是否成功
         """
-        stock = self.session.execute(
-            select(Stock).where(Stock.code == stock_code, Stock.is_watched == True)
-        ).scalar_one_or_none()
+        self._ensure_session()
 
-        if not stock:
-            return False
+        try:
+            stock = self.session.execute(
+                select(Stock).where(Stock.code == stock_code, Stock.is_watched == True)
+            ).scalar_one_or_none()
 
-        stock.watch_note = note
-        stock.updated_at = datetime.now()
-        self.session.commit()
-        return True
+            if not stock:
+                return False
+
+            stock.watch_note = note
+            stock.updated_at = datetime.now()
+            self.session.commit()
+            return True
+        except Exception:
+            self.session.rollback()
+            raise
