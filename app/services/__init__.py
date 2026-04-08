@@ -6,6 +6,7 @@ from app.services.analysis_service import AnalysisService
 from app.services.portfolio_service import PortfolioService
 from app.services.watchlist_service import WatchlistService
 from app.services.backtest_service import BacktestService
+from app.services.notification import NotificationManager
 
 __all__ = [
     "TradeService",
@@ -14,4 +15,5 @@ __all__ = [
     "PortfolioService",
     "WatchlistService",
     "BacktestService",
+    "NotificationManager",
 ]

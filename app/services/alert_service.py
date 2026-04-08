@@ -26,6 +26,14 @@ class AlertService:
         self.market = MarketService()
         self.feature_engine = FeatureEngine()
 
+        # 延迟初始化通知管理器（推送失败不影响核心预警）
+        self.notifier = None
+        try:
+            from app.services.notification import NotificationManager
+            self.notifier = NotificationManager()
+        except Exception:
+            pass
+
     # ==================== CRUD ====================
 
     def add_alert(
@@ -475,6 +483,13 @@ class AlertService:
             alert.is_active = False
 
         self.session.commit()
+
+        # 触发消息推送
+        if self.notifier and self.notifier.is_enabled:
+            try:
+                self.notifier.notify_alert(alert, quote, result.get("message", ""))
+            except Exception:
+                pass  # 推送失败不影响核心逻辑
 
         return {
             "alert": alert,

@@ -55,6 +55,7 @@ chart_app = typer.Typer(help="可视化图表", no_args_is_help=True, hidden=Tru
 ai_app = typer.Typer(help="AI 预测分析", no_args_is_help=True, hidden=True)
 alert_app = typer.Typer(help="预警监控管理", no_args_is_help=True, hidden=True)
 backtest_app = typer.Typer(help="回测引擎", no_args_is_help=True, hidden=True)
+notify_app = typer.Typer(help="消息推送管理", no_args_is_help=True, hidden=True)
 
 app.add_typer(trade_app, name="trade")
 app.add_typer(portfolio_app, name="portfolio")
@@ -65,6 +66,7 @@ app.add_typer(chart_app, name="chart")
 app.add_typer(ai_app, name="ai")
 app.add_typer(alert_app, name="alert")
 app.add_typer(backtest_app, name="backtest")
+app.add_typer(notify_app, name="notify")
 
 
 # ==================== 初始化回调 ====================
@@ -2912,6 +2914,121 @@ def quick_bt_compare(
 ):
     """多策略对比回测"""
     backtest_compare(code=code, days=days, capital=capital, strategies=strategies)
+
+
+
+
+# ==================== 消息推送命令 ====================
+
+def _notify_test_impl(channel: str):
+    """通知测试内部实现"""
+    from app.services.notification import NotificationManager, NotificationLevel
+
+    mgr = NotificationManager()
+    if not mgr.is_enabled:
+        console.print("[yellow]⚠️ 消息推送未启用或无已配置的渠道[/yellow]")
+        console.print("[dim]请在 config.yaml 的 notification.channels 中启用至少一个渠道[/dim]")
+        return
+
+    target = channel if channel else "所有已启用渠道"
+    console.print(f"[cyan]📤 向 {target} 发送测试消息...[/cyan]")
+    results = mgr.notify(
+        title="测试消息 — Stock Trader AI",
+        content="这是一条测试消息，如果你收到了说明推送配置正确！🎉",
+        level=NotificationLevel.INFO,
+        stock_code="sh000001", stock_name="上证指数",
+        price=3200.00, change_percent=0.88,
+        channel=channel if channel else None,
+    )
+    if not results:
+        console.print("[yellow]⚠️ 没有发送结果（可能无已启用的渠道）[/yellow]")
+        return
+    for ch_name, success, err in results:
+        if success:
+            console.print(f"  [green]✅ {ch_name} — 发送成功[/green]")
+        else:
+            console.print(f"  [red]❌ {ch_name} — 发送失败: {err}[/red]")
+
+
+def _notify_list_impl():
+    """通知渠道列表内部实现"""
+    from app.services.notification import NotificationManager
+    mgr = NotificationManager()
+    status = mgr.get_status()
+
+    table = Table(title="📬 消息推送渠道配置", box=box.ROUNDED, show_lines=True, header_style="bold cyan")
+    table.add_column("渠道", width=12)
+    table.add_column("配置", width=8, justify="center")
+    table.add_column("连接", width=8, justify="center")
+    table.add_column("说明", width=35)
+
+    ch_info = {
+        "serverchan": ("Server酱", "免费微信推送 (5条/天) — sct.ftqq.com"),
+        "pushplus": ("PushPlus", "免费微信推送 (200条/天) — pushplus.plus"),
+        "dingtalk": ("钉钉", "钉钉群机器人 Webhook — 无限制"),
+        "feishu": ("飞书", "飞书群机器人 Webhook — 无限制"),
+        "telegram": ("Telegram", "Telegram Bot 推送 — 无限制"),
+        "email": ("邮件", "SMTP 邮件推送 — 无限制"),
+        "wecom": ("企业微信", "企业微信群机器人 Webhook — 无限制"),
+    }
+    for ch_name, ch_st in status["channels"].items():
+        info = ch_info.get(ch_name, (ch_name, ""))
+        enabled = "[green]✅ 已启用[/green]" if ch_st["enabled"] else "[dim]未启用[/dim]"
+        connected = "[green]✅[/green]" if ch_st["connected"] else "[dim]—[/dim]"
+        table.add_row(info[0], enabled, connected, info[1])
+    console.print(table)
+
+    global_st = "[green]已启用[/green]" if status["enabled"] else "[red]已禁用[/red]"
+    alert_st = "[green]是[/green]" if status["on_alert"] else "[dim]否[/dim]"
+    trade_st = "[green]是[/green]" if status["on_trade"] else "[dim]否[/dim]"
+    console.print(f"\n全局推送: {global_st} | 预警推送: {alert_st} | 交易推送: {trade_st}")
+    if mgr.enabled_channels:
+        console.print(f"[green]活跃渠道: {', '.join(mgr.enabled_channels)}[/green]")
+    else:
+        console.print("[yellow]⚠️ 当前没有活跃的推送渠道，请在 config.yaml 中配置[/yellow]")
+    console.print("\n[dim]配置方法: 编辑 config.yaml → notification.channels, 设置 enabled: true 并填 key/token/webhook[/dim]")
+
+
+@notify_app.command("test")
+def notify_test_cmd(
+    channel: str = typer.Option("", "--channel", "-c", help="指定渠道"),
+):
+    """发送测试通知"""
+    _notify_test_impl(channel)
+
+
+@notify_app.command("list")
+def notify_list_cmd():
+    """查看推送渠道配置"""
+    _notify_list_impl()
+
+
+@app.command("notify-test", help="发送测试通知 (缩写: nt)")
+def quick_notify_test(
+    channel: str = typer.Option("", "--channel", "-c", help="指定渠道"),
+):
+    """发送测试通知到已启用的推送渠道"""
+    _notify_test_impl(channel)
+
+
+@app.command("nt", hidden=True)
+def alias_nt(
+    channel: str = typer.Option("", "--channel", "-c", help="指定渠道"),
+):
+    """notify-test 的缩写"""
+    _notify_test_impl(channel)
+
+
+@app.command("notify-list", help="查看推送渠道配置 (缩写: nl)")
+def quick_notify_list():
+    """查看推送渠道配置"""
+    _notify_list_impl()
+
+
+@app.command("nl", hidden=True)
+def alias_nl():
+    """notify-list 的缩写"""
+    _notify_list_impl()
 
 
 # ==================== 辅助函数 ====================

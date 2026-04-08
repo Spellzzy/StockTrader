@@ -1,5 +1,5 @@
 # Stock Trader AI 配置文件
-# 复制本文件为 config.yaml 并填入你的配置:
+# 复制此文件为 config.yaml 并填入你的配置:
 #   cp config.yaml.example config.yaml
 
 # 数据库配置
@@ -29,11 +29,11 @@ visualization:
 
 # AI 配置
 ai:
-  # LLM 分析引擎
+  # LLM 分析引擎 (Phase 3)
   llm:
     # 支持: openai / deepseek / moonshot / dashscope / zhipu / ollama
     provider: "openai"
-    api_key: "YOUR_API_KEY_HERE"   # ← 填入你的 API Key (ollama 不需要)
+    api_key: ""                    # 你的 API Key (ollama 不需要)
     model: "gpt-4o"                # 模型名称
     base_url: ""                   # 自定义 API 地址 (可选，留空则自动匹配 provider)
     # 免费方案: 安装 Ollama 后设置 provider: "ollama", model: "qwen2.5:7b"
@@ -41,7 +41,68 @@ ai:
   model:
     save_dir: "./data/models"
 
+# 消息推送配置
+notification:
+  enabled: true              # 全局开关
+  on_alert: true             # 预警触发时推送
+  on_trade: false            # 交易成交时推送 (未来扩展)
+
+  channels:
+    # Server酱 — 免费微信推送 (https://sct.ftqq.com)
+    serverchan:
+      enabled: false
+      send_key: ""           # 登录 sct.ftqq.com 获取
+
+    # PushPlus — 免费微信推送 (https://www.pushplus.plus)
+    pushplus:
+      enabled: false
+      token: ""              # 登录 pushplus.plus 获取
+
+    # 钉钉群机器人
+    dingtalk:
+      enabled: false
+      webhook: ""            # 群设置→智能群助手→添加机器人→自定义
+      secret: ""             # 安全设置→加签密钥
+
+    # 飞书群机器人
+    feishu:
+      enabled: false
+      webhook: ""            # 群设置→群机器人→自定义机器人
+      secret: ""             # 安全设置密钥 (可选)
+
+    # Telegram Bot
+    telegram:
+      enabled: false
+      bot_token: ""          # @BotFather 创建
+      chat_id: ""            # 你的 chat_id
+
+    # 邮件 SMTP
+    email:
+      enabled: false
+      smtp_host: "smtp.qq.com"
+      smtp_port: 465
+      use_ssl: true
+      username: ""           # 发件邮箱
+      password: ""           # SMTP 授权码（不是登录密码）
+      to: ""                 # 收件邮箱
+
+    # 企业微信群机器人
+    wecom:
+      enabled: false
+      webhook: ""            # 群聊→添加群机器人→Webhook地址
+
 # 预警监控配置
 alerts:
   check_interval: 30         # 默认检测间隔 (秒)
   watch_interval: 30         # 看盘模式刷新间隔 (秒)
+
+# 回测引擎配置
+backtest:
+  initial_capital: 100000    # 默认初始资金 (元)
+  commission_rate: 0.0003    # 手续费率 (万三)
+  tax_rate: 0.001            # 印花税率 (千一，卖出收取)
+  stop_loss: 0.0             # 默认止损比例 (0=不止损, 0.05=5%)
+  take_profit: 0.0           # 默认止盈比例 (0=不止盈, 0.1=10%)
+  position_size: 1.0         # 单次建仓资金比例 (0~1)
+  default_days: 180          # 默认回测天数
+  default_strategy: "macd_cross"  # 默认策略

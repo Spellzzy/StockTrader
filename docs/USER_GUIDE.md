@@ -24,6 +24,7 @@
   - [预警监控](#预警监控)
   - [实时看盘](#实时看盘)
 - [回测引擎](#回测引擎)
+- [消息推送](#消息推送)
 - [数据说明](#数据说明)
 - [常见问题](#常见问题)
 
@@ -225,6 +226,9 @@ stock-ai chart-winloss               # 胜负统计图
 | 运行回测 | `stock-ai bt <代码>` | — | `stock-ai bt sh600519 -s rsi -d 365` |
 | 查看策略 | `stock-ai bt-list` | — | `stock-ai bt-list` |
 | 多策略对比 | `stock-ai bt-compare <代码>` | — | `stock-ai bt-compare sh600519` |
+| **📬 消息推送** | | | |
+| 查看渠道 | `stock-ai notify-list` | `nl` | `stock-ai nl` |
+| 测试推送 | `stock-ai notify-test` | `nt` | `stock-ai nt -c dingtalk` |
 | 查看帮助 | `stock-ai --help` | — | `stock-ai --help` |
 
 ---
@@ -317,6 +321,15 @@ stock-ai bt-list                         # 查看可用策略
 stock-ai bt-compare sh600519             # 多策略对比
 ```
 
+### 消息推送
+
+```
+stock-ai nl                              # 查看渠道配置 (notify-list)
+stock-ai nt                              # 测试推送 (notify-test)
+stock-ai nt -c dingtalk                  # 仅测试钉钉渠道
+stock-ai nt -c email                     # 仅测试邮件渠道
+```
+
 ### 完整缩写映射表
 
 | 缩写 | 全称 | 助记 |
@@ -356,6 +369,8 @@ stock-ai bt-compare sh600519             # 多策略对比
 | `bt` | backtest run | **b**ack**t**est 回测 |
 | `bt-list` | backtest list | 查看回测策略 |
 | `bt-compare` | backtest compare | 多策略对比 |
+| `nt` | notify-test | **n**otify-**t**est 测试推送 |
+| `nl` | notify-list | **n**otify-**l**ist 渠道配置 |
 
 ---
 
@@ -1034,6 +1049,99 @@ stock-ai bt-list                         # 查看可用策略
 stock-ai bt-compare sh600519             # 多策略对比
 stock-ai bt-compare sh600519 -s "rsi,turtle,macd_cross"  # 指定策略对比
 ```
+
+---
+
+## 消息推送
+
+预警触发后自动推送通知到手机/群聊/邮箱，支持 **7 种渠道** 同时推送。
+
+### 支持的渠道
+
+| 渠道 | 说明 | 免费额度 | 获取方式 |
+|------|------|----------|----------|
+| **Server酱** | 微信推送 | 5条/天 | [sct.ftqq.com](https://sct.ftqq.com) 获取 send_key |
+| **PushPlus** | 微信推送 | 200条/天 | [pushplus.plus](https://www.pushplus.plus) 获取 token |
+| **钉钉** | 群机器人 | 无限制 | 群设置→智能群助手→自定义机器人 |
+| **飞书** | 群机器人 | 无限制 | 群设置→群机器人→自定义机器人 |
+| **Telegram** | Bot 推送 | 无限制 | @BotFather 创建 Bot |
+| **邮件** | SMTP 邮件 | 无限制 | 各邮箱 SMTP 授权码 |
+| **企业微信** | 群机器人 | 无限制 | 群聊→添加群机器人→Webhook |
+
+### 配置方法
+
+编辑项目根目录 `config.yaml`，在 `notification` 段中配置：
+
+```yaml
+notification:
+  enabled: true        # 全局开关
+  on_alert: true       # 预警触发时推送
+  on_trade: false      # 交易成交时推送 (未来扩展)
+
+  channels:
+    # 以 Server酱为例
+    serverchan:
+      enabled: true
+      send_key: "SCT..."    # 登录 sct.ftqq.com 获取
+
+    # 以钉钉为例
+    dingtalk:
+      enabled: true
+      webhook: "https://oapi.dingtalk.com/robot/send?access_token=..."
+      secret: "SEC..."      # 加签密钥
+```
+
+> 💡 可以同时启用多个渠道，预警触发时会**并行推送**到所有已启用的渠道。
+
+### 推送命令
+
+```bash
+# 查看所有渠道配置状态
+stock-ai notify-list                     # 缩写: nl
+
+# 发送测试消息（验证配置是否正确）
+stock-ai notify-test                     # 缩写: nt
+
+# 仅测试某个渠道
+stock-ai notify-test -c dingtalk
+stock-ai notify-test -c serverchan
+stock-ai notify-test -c email
+```
+
+### 推送触发流程
+
+```
+预警条件满足 → alert_service._record_trigger()
+  ↓
+NotificationManager.notify_alert()
+  ↓
+并行发送到所有已启用渠道
+  ├─ Server酱 (微信)
+  ├─ PushPlus (微信)
+  ├─ 钉钉群机器人
+  ├─ 飞书群机器人
+  ├─ Telegram Bot
+  ├─ 邮件 (SMTP)
+  └─ 企业微信群机器人
+```
+
+### 推送内容示例
+
+预警触发时推送的消息包含：
+
+- 📌 **股票信息** — 代码、名称
+- 💰 **当前价格** — 实时价格、涨跌幅
+- ⚠️ **触发条件** — 触发的预警描述
+- 🕐 **触发时间** — 精确到秒
+
+### 缩写速查
+
+| 缩写 | 全称 | 说明 |
+|------|------|------|
+| `nt` | notify-test | 发送测试通知 |
+| `nl` | notify-list | 查看渠道配置 |
+
+> ⚠️ **安全提示**：`config.yaml` 中包含各渠道的密钥/Token，请勿将配置文件提交到公开仓库。建议将 `config.yaml` 加入 `.gitignore`。
 
 ---
 
