@@ -432,6 +432,233 @@ class ChartService:
         plt.close(fig)
         return filepath
 
+    def plot_backtest_equity(
+        self,
+        result,
+        title: str = "",
+        save: bool = True,
+    ) -> str:
+        """绘制回测权益曲线 + 回撤图 + 买卖标记
+
+        Args:
+            result: BacktestResult 对象
+            title: 图表标题
+            save: 是否保存
+
+        Returns:
+            保存的文件路径
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+
+        plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
+        plt.rcParams["axes.unicode_minus"] = False
+
+        eq = result.equity_curve
+        if eq is None or eq.empty:
+            return ""
+
+        if not title:
+            title = f"{result.code} 回测 — {result.strategy_name}"
+
+        fig, (ax1, ax2, ax3) = plt.subplots(
+            3, 1, figsize=(16, 11), height_ratios=[3, 1, 1], sharex=True
+        )
+        for ax in (ax1, ax2, ax3):
+            self._apply_theme(fig, ax)
+
+        x = list(range(len(eq)))
+        equity = eq["equity"].values
+        initial = result.initial_capital
+
+        # ── 上图: 权益曲线 + 基准线 ──
+        # 基准 (买入持有)
+        if "close" in eq.columns:
+            benchmark = eq["close"].values / eq["close"].values[0] * initial
+            ax1.plot(x, benchmark, color="#888888", linewidth=1.0, linestyle="--", label="基准(买入持有)", alpha=0.7)
+
+        # 权益曲线
+        ax1.plot(x, equity, color="#2196F3", linewidth=2.0, label="策略权益")
+        ax1.fill_between(x, equity, initial, where=equity >= initial, alpha=0.15, color="#00c853")
+        ax1.fill_between(x, equity, initial, where=equity < initial, alpha=0.15, color="#ff4444")
+        ax1.axhline(y=initial, color="#888888", linestyle=":", linewidth=0.8, alpha=0.5)
+
+        # 买卖标记
+        buy_mask = eq["signal"] == 1
+        sell_mask = eq["signal"] == -1
+        if buy_mask.any():
+            buy_x = [x[i] for i in range(len(x)) if buy_mask.iloc[i]]
+            buy_y = [equity[i] for i in range(len(x)) if buy_mask.iloc[i]]
+            ax1.scatter(buy_x, buy_y, marker="^", color="#00c853", s=80, zorder=5, label="买入")
+        if sell_mask.any():
+            sell_x = [x[i] for i in range(len(x)) if sell_mask.iloc[i]]
+            sell_y = [equity[i] for i in range(len(x)) if sell_mask.iloc[i]]
+            ax1.scatter(sell_x, sell_y, marker="v", color="#ff4444", s=80, zorder=5, label="卖出")
+
+        ax1.set_title(title, fontsize=16, fontweight="bold", pad=12)
+        ax1.set_ylabel("权益 (元)", fontsize=12)
+        ax1.legend(
+            loc="upper left", fontsize=9, framealpha=0.7,
+            facecolor="#2a2a3d" if self.theme == "dark" else "white",
+            labelcolor="#cccccc" if self.theme == "dark" else "#333333",
+        )
+        ax1.grid(True, alpha=0.15)
+
+        # 标注最终收益
+        final = equity[-1]
+        ret_pct = (final - initial) / initial * 100
+        ret_color = "#00c853" if ret_pct >= 0 else "#ff4444"
+        ax1.annotate(
+            f"收益: {ret_pct:+.2f}%\n终值: {final:,.0f}",
+            xy=(x[-1], final), fontsize=9, color=ret_color, fontweight="bold",
+            ha="right", va="bottom" if ret_pct >= 0 else "top",
+        )
+
+        # ── 中图: 回撤曲线 ──
+        peak = np.maximum.accumulate(equity)
+        drawdown_pct = (peak - equity) / peak * 100
+        ax2.fill_between(x, drawdown_pct, 0, color="#ff4444", alpha=0.4)
+        ax2.plot(x, drawdown_pct, color="#ff4444", linewidth=1.0)
+        ax2.set_ylabel("回撤 (%)", fontsize=10)
+        ax2.invert_yaxis()
+        ax2.grid(True, alpha=0.15)
+
+        # 标注最大回撤
+        max_dd_idx = np.argmax(drawdown_pct)
+        max_dd = drawdown_pct[max_dd_idx]
+        ax2.annotate(
+            f"最大回撤: {max_dd:.2f}%",
+            xy=(max_dd_idx, max_dd), fontsize=9, color="#ff4444", fontweight="bold",
+            ha="center", va="top",
+        )
+
+        # ── 下图: 持仓状态 ──
+        position_val = eq["position_value"].values
+        ax3.fill_between(x, position_val, 0, color="#2196F3", alpha=0.3)
+        ax3.plot(x, position_val, color="#2196F3", linewidth=1.0)
+        ax3.set_ylabel("持仓市值", fontsize=10)
+        ax3.grid(True, alpha=0.15)
+
+        # X 轴日期标签
+        step = max(1, len(eq) // 12)
+        tick_positions = list(range(0, len(eq), step))
+        tick_labels = [
+            eq.iloc[i]["date"].strftime("%m-%d") if hasattr(eq.iloc[i]["date"], "strftime")
+            else str(eq.iloc[i]["date"])[:5]
+            for i in tick_positions
+        ]
+        ax3.set_xticks(tick_positions)
+        ax3.set_xticklabels(tick_labels, rotation=45, fontsize=9)
+
+        plt.tight_layout()
+        plt.subplots_adjust(hspace=0.08)
+
+        filepath = ""
+        if save:
+            safe_name = f"{result.code}_{result.strategy_name}".replace("/", "_")
+            filepath = os.path.join(self.save_dir, f"backtest_{safe_name}.png")
+            fig.savefig(filepath, dpi=150, bbox_inches="tight")
+
+        plt.show()
+        plt.close(fig)
+        return filepath
+
+    def plot_backtest_trades(
+        self,
+        result,
+        title: str = "",
+        save: bool = True,
+    ) -> str:
+        """绘制回测交易明细图（每笔交易的盈亏柱状图 + 累计收益）
+
+        Args:
+            result: BacktestResult 对象
+            title: 图表标题
+            save: 是否保存
+
+        Returns:
+            保存的文件路径
+        """
+        import matplotlib.pyplot as plt
+
+        plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
+        plt.rcParams["axes.unicode_minus"] = False
+
+        trades = result.trades
+        if not trades:
+            return ""
+
+        if not title:
+            title = f"{result.code} 交易明细 — {result.strategy_name}"
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[2, 1])
+        for ax in (ax1, ax2):
+            self._apply_theme(fig, ax)
+
+        x = list(range(len(trades)))
+        profits = [t.profit for t in trades]
+        profit_rates = [t.profit_rate for t in trades]
+
+        # ── 上图: 每笔交易盈亏柱状图 ──
+        bar_colors = ["#00c853" if p >= 0 else "#ff4444" for p in profits]
+        ax1.bar(x, profits, color=bar_colors, width=0.6, alpha=0.85)
+        ax1.axhline(y=0, color="#888888", linestyle="--", linewidth=0.8)
+        ax1.set_title(title, fontsize=16, fontweight="bold")
+        ax1.set_ylabel("单笔盈亏 (元)", fontsize=12)
+        ax1.grid(True, alpha=0.15, axis="y")
+
+        # 标注关键数值
+        for i, (p, r) in enumerate(zip(profits, profit_rates)):
+            if abs(p) > 0:
+                va = "bottom" if p >= 0 else "top"
+                color = "#ffffff" if self.theme == "dark" else "#333333"
+                ax1.text(i, p, f"{r:+.1f}%", ha="center", va=va, fontsize=7, color=color)
+
+        # 标注退出原因
+        for i, t in enumerate(trades):
+            if t.exit_reason and t.exit_reason != "signal":
+                reason_map = {"stop_loss": "止损", "take_profit": "止盈", "end": "到期", "timeout": "超时"}
+                label = reason_map.get(t.exit_reason, t.exit_reason)
+                ax1.annotate(
+                    label, xy=(i, profits[i]),
+                    fontsize=7, color="#FFD700", fontweight="bold",
+                    ha="center", va="bottom" if profits[i] < 0 else "top",
+                )
+
+        # ── 下图: 累计收益曲线 ──
+        cum_profits = np.cumsum(profits)
+        ax2.plot(x, cum_profits, color="#2196F3", linewidth=2.0, marker="o", markersize=4)
+        ax2.fill_between(x, cum_profits, 0, where=cum_profits >= 0, alpha=0.2, color="#00c853")
+        ax2.fill_between(x, cum_profits, 0, where=cum_profits < 0, alpha=0.2, color="#ff4444")
+        ax2.axhline(y=0, color="#888888", linestyle="--", linewidth=0.8)
+        ax2.set_ylabel("累计盈亏 (元)", fontsize=10)
+        ax2.set_xlabel("交易序号", fontsize=10)
+        ax2.grid(True, alpha=0.15)
+
+        # X 轴标签 (显示交易日期)
+        if len(trades) <= 20:
+            labels = [f"#{i+1}\n{t.exit_date[5:]}" for i, t in enumerate(trades)]
+            ax2.set_xticks(x)
+            ax2.set_xticklabels(labels, fontsize=8, rotation=45)
+        else:
+            step = max(1, len(trades) // 15)
+            tick_pos = list(range(0, len(trades), step))
+            labels = [f"#{i+1}" for i in tick_pos]
+            ax2.set_xticks(tick_pos)
+            ax2.set_xticklabels(labels, fontsize=9)
+
+        plt.tight_layout()
+
+        filepath = ""
+        if save:
+            safe_name = f"{result.code}_{result.strategy_name}".replace("/", "_")
+            filepath = os.path.join(self.save_dir, f"backtest_trades_{safe_name}.png")
+            fig.savefig(filepath, dpi=150, bbox_inches="tight")
+
+        plt.show()
+        plt.close(fig)
+        return filepath
+
     def plot_monthly_pnl(
         self,
         monthly_df: pd.DataFrame,
