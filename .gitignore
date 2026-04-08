@@ -1,0 +1,60 @@
+# ==================== Python ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+
+# ==================== 数据文件（运行时生成） ====================
+# SQLite 数据库
+data/stock_trader.db
+data/stock_trader.db-journal
+data/stock_trader.db-wal
+
+# 训练好的 ML/DL 模型（二进制大文件）
+data/models/ml/*.joblib
+data/models/dl/*.pt
+data/models/dl/*.pth
+data/models/dl/*.h5
+
+# 缓存数据
+data/cache/
+
+# 生成的图表
+data/charts/
+
+# 导出的文件
+data/exports/
+
+# ==================== 配置敏感信息 ====================
+# config.yaml 包含 API Key，不提交
+# 提供 config.yaml.example 作为模板
+config.local.yaml
+
+# ==================== IDE / 编辑器 ====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==================== 系统文件 ====================
+*.log
+*.tmp
+*.bak
+
+# ==================== CodeBuddy ====================
+.codebuddy/

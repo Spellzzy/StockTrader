@@ -1,0 +1,45 @@
+# Stock Trader AI 配置文件
+
+# 数据库配置
+database:
+  path: "./data/stock_trader.db"
+
+# stock-data CLI 路径
+stock_data:
+  # Windows 系统已将 stock-data.exe 复制到 System32
+  bin_path: "stock-data"
+
+# 默认市场
+market:
+  default: "A"  # A股/港股(HK)/美股(US)
+
+# 数据缓存
+cache:
+  enabled: true
+  dir: "./data/cache"
+  expire_minutes: 30  # K线等数据缓存时间
+
+# 可视化
+visualization:
+  default_backend: "matplotlib"  # matplotlib / plotly
+  theme: "dark"  # dark / light
+  save_dir: "./data/charts"
+
+# AI 配置
+ai:
+  # LLM 分析引擎 (Phase 3)
+  llm:
+    # 支持: openai / deepseek / moonshot / dashscope / zhipu / ollama
+    provider: "openai"
+    api_key: ""                    # 你的 API Key (ollama 不需要)
+    model: "gpt-4o"                # 模型名称
+    base_url: ""                   # 自定义 API 地址 (可选，留空则自动匹配 provider)
+    # 免费方案: 安装 Ollama 后设置 provider: "ollama", model: "qwen2.5:7b"
+  # ML/DL 模型存储
+  model:
+    save_dir: "./data/models"
+
+# 预警监控配置
+alerts:
+  check_interval: 30         # 默认检测间隔 (秒)
+  watch_interval: 30         # 看盘模式刷新间隔 (秒)
