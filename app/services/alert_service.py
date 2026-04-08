@@ -146,11 +146,20 @@ class AlertService:
 
     # ==================== 条件匹配引擎 ====================
 
-    def check_alerts(self, verbose: bool = False) -> List[dict]:
+    def check_alerts(
+        self,
+        verbose: bool = False,
+        quotes_cache: Optional[dict] = None,
+        tech_cache: Optional[dict] = None,
+    ) -> List[dict]:
         """检测所有活跃预警，返回触发列表
 
         Args:
             verbose: 是否输出详细信息
+            quotes_cache: 已获取的行情缓存 {code: {price, ...}}，
+                          传入后不再重复请求 quote API
+            tech_cache: 已获取的技术指标缓存 {code: {rsi6, macd_dif, ...}}，
+                        传入后不再重复请求 kline API
 
         Returns:
             触发的预警列表 [{alert, trigger_value, message}, ...]
@@ -172,12 +181,16 @@ class AlertService:
             code_alerts.setdefault(alert.stock_code, []).append(alert)
 
         triggered_list = []
+        _tech_cache = tech_cache or {}  # 同一轮内的技术指标缓存
 
         for stock_code, alert_group in code_alerts.items():
             try:
-                # 获取行情数据
-                quote_data = self.market.get_quote(stock_code)
-                quote = quote_data.get(stock_code, {})
+                # 优先从缓存获取行情数据，避免重复请求
+                if quotes_cache and stock_code in quotes_cache:
+                    quote = quotes_cache[stock_code]
+                else:
+                    quote_data = self.market.get_quote(stock_code)
+                    quote = quote_data.get(stock_code, {})
 
                 if not quote or not quote.get("price"):
                     continue
@@ -196,7 +209,12 @@ class AlertService:
 
                 tech_data = {}
                 if need_technical:
-                    tech_data = self._get_technical_snapshot(stock_code)
+                    # 优先从缓存取，同一轮内不重复拉 kline
+                    if stock_code in _tech_cache:
+                        tech_data = _tech_cache[stock_code]
+                    else:
+                        tech_data = self._get_technical_snapshot(stock_code)
+                        _tech_cache[stock_code] = tech_data
 
                 # 逐条检测
                 for alert in alert_group:
@@ -524,8 +542,8 @@ class AlertService:
                 # 批量获取行情
                 quotes = self.market.get_quote(*codes)
 
-                # 检测预警
-                triggered = self.check_alerts()
+                # 检测预警（复用已获取的行情数据）
+                triggered = self.check_alerts(quotes_cache=quotes)
 
                 if callback:
                     callback(quotes, triggered)

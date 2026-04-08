@@ -501,16 +501,23 @@ def market_kline(
     period: str = typer.Option("day", "--period", "-p", help="周期: day/week/month/m5/m15/m30/m60"),
     count: int = typer.Option(20, "--count", "-c", help="获取数量"),
     adjust: str = typer.Option("qfq", "--adjust", "-a", help="复权: qfq/hfq/空"),
+    chart: bool = typer.Option(False, "--chart", "-g", help="显示K线图(含均线+MACD)"),
 ):
-    """查询K线数据"""
+    """查询K线数据 (加 -g 出图)"""
     from app.services.market_service import MarketService
 
+    # 出图时自动拉取更多数据（至少60条才够画均线）
+    fetch_count = max(count, 80) if chart else count
+
     svc = MarketService()
-    df = svc.get_kline_df(code, period, count, adjust)
+    df = svc.get_kline_df(code, period, fetch_count, adjust)
 
     if df.empty:
         console.print("[red]❌ 获取K线数据失败[/red]")
         return
+
+    # 表格展示（只显示用户请求的条数）
+    show_df = df.tail(count) if len(df) > count else df
 
     table = Table(title=f"📊 {code} {period}K线 (最近{count}条)", box=box.ROUNDED, header_style="bold cyan")
     table.add_column("日期", width=12)
@@ -522,7 +529,7 @@ def market_kline(
     table.add_column("成交量", width=10, justify="right")
     table.add_column("换手率", width=8, justify="right")
 
-    for _, row in df.iterrows():
+    for _, row in show_df.iterrows():
         chg = (row["close"] - row["open"]) / row["open"] * 100 if row["open"] > 0 else 0
         color = "green" if chg >= 0 else "red"
         vol = row["volume"]
@@ -541,6 +548,20 @@ def market_kline(
         )
 
     console.print(table)
+
+    # 出图
+    if chart:
+        from app.visualization.charts import ChartService
+
+        console.print("[dim]📈 正在绘制K线图...[/dim]")
+        path = ChartService().plot_kline(
+            df,
+            title=f"{code} {period}K线",
+            show_ma=True,
+            show_macd=True,
+        )
+        if path:
+            console.print(f"[green]✅ K线图已保存: {path}[/green]")
 
 
 @market_app.command("finance")
@@ -1493,15 +1514,16 @@ def alias_q(codes: str = typer.Argument(..., help="股票代码(逗号分隔)"))
     market_quote(codes=codes)
 
 
-@app.command("kline", help="查询K线数据 (缩写: k)")
+@app.command("kline", help="查询K线数据 (缩写: k，加 -g 出图)")
 def quick_kline(
     code: str = typer.Argument(..., help="股票代码"),
     period: str = typer.Option("day", "--period", "-p", help="周期"),
     count: int = typer.Option(20, "--count", "-c", help="数量"),
     adjust: str = typer.Option("qfq", "--adjust", "-a", help="复权"),
+    chart: bool = typer.Option(False, "--chart", "-g", help="显示K线图"),
 ):
     """查询K线数据"""
-    market_kline(code=code, period=period, count=count, adjust=adjust)
+    market_kline(code=code, period=period, count=count, adjust=adjust, chart=chart)
 
 
 @app.command("k", hidden=True)
@@ -1510,9 +1532,10 @@ def alias_k(
     period: str = typer.Option("day", "--period", "-p", help="周期"),
     count: int = typer.Option(20, "--count", "-c", help="数量"),
     adjust: str = typer.Option("qfq", "--adjust", "-a", help="复权"),
+    chart: bool = typer.Option(False, "--chart", "-g", help="显示K线图"),
 ):
     """kline 的缩写"""
-    market_kline(code=code, period=period, count=count, adjust=adjust)
+    market_kline(code=code, period=period, count=count, adjust=adjust, chart=chart)
 
 
 @app.command("finance", help="查询财务数据 (缩写: f)")
@@ -2137,13 +2160,32 @@ def _do_watch(codes_str: str, interval: int, alert_only: bool):
         console.print("[yellow]请指定股票代码或先添加自选股 (stock-ai star <代码>)[/yellow]")
         return
 
+    # ── 间隔保护 ──
+    MIN_INTERVAL = 10
+    stock_count = len(codes)
+    if interval < MIN_INTERVAL:
+        console.print(
+            f"[yellow]⚠️ 刷新间隔 {interval}s 过短，已自动调整为 {MIN_INTERVAL}s "
+            f"(最小间隔 {MIN_INTERVAL}s)[/yellow]"
+        )
+        interval = MIN_INTERVAL
+
+    # 根据股票数量建议合理间隔
+    suggested = max(MIN_INTERVAL, stock_count * 3)
+    if interval < suggested and stock_count > 5:
+        console.print(
+            f"[yellow]💡 监控 {stock_count} 只股票，建议间隔 ≥ {suggested}s "
+            f"(当前 {interval}s)[/yellow]"
+        )
+
     svc = AlertService()
     market = MarketService()
     round_count = 0
     prev_quotes: dict = {}  # 上一轮行情数据
     first_quotes: dict = {}  # 首轮行情数据 (用于累计变动)
+    total_api_calls = 0  # API 请求计数
 
-    console.print(f"[cyan]👀 实时看盘模式 — 监控 {len(codes)} 只股票 (每{interval}秒刷新, Ctrl+C 退出)[/cyan]\n")
+    console.print(f"[cyan]👀 实时看盘模式 — 监控 {stock_count} 只股票 (每{interval}秒刷新, Ctrl+C 退出)[/cyan]\n")
 
     try:
         import time as time_mod
@@ -2152,10 +2194,12 @@ def _do_watch(codes_str: str, interval: int, alert_only: bool):
             round_count += 1
             now_str = datetime.now().strftime("%H:%M:%S")
             has_prev = bool(prev_quotes)
+            round_api_calls = 0
 
             try:
-                # 获取行情
+                # 获取行情（整个 watch 轮次唯一的 quote 请求）
                 quotes_data = market.get_quote(*codes)
+                round_api_calls += 1
 
                 # 首轮记录基准数据
                 if not first_quotes:
@@ -2316,8 +2360,8 @@ def _do_watch(codes_str: str, interval: int, alert_only: bool):
                                 expand=False,
                             ))
 
-                # 检测预警
-                triggered = svc.check_alerts(verbose=True)
+                # 检测预警（复用已获取的行情数据，避免重复请求）
+                triggered = svc.check_alerts(verbose=True, quotes_cache=quotes_data)
                 if triggered:
                     console.print(f"\n[bold red]🚨 {len(triggered)} 条预警触发！[/bold red]")
                     for t in triggered:
@@ -2331,7 +2375,15 @@ def _do_watch(codes_str: str, interval: int, alert_only: bool):
                 if not alert_only:
                     if round_count == 1:
                         console.print("[dim]💡 首轮采集基准数据，下轮起显示变动追踪[/dim]")
-                    console.print(f"[dim]下次刷新: {interval}秒后 (Ctrl+C 退出)[/dim]\n")
+                    total_api_calls += round_api_calls
+                    rate_per_hour = total_api_calls / (round_count * interval) * 3600 if round_count > 0 else 0
+                    console.print(
+                        f"[dim]下次刷新: {interval}秒后 | "
+                        f"本轮请求: {round_api_calls}次 | "
+                        f"累计: {total_api_calls}次/{round_count}轮 "
+                        f"(≈{rate_per_hour:.0f}次/小时) "
+                        f"(Ctrl+C 退出)[/dim]\n"
+                    )
 
                 # 保存当前轮数据作为下一轮的对比基准
                 prev_quotes = {

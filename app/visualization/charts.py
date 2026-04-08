@@ -97,14 +97,20 @@ class ChartService:
         kline_df: pd.DataFrame,
         title: str = "K线图",
         show_volume: bool = True,
+        show_ma: bool = True,
+        show_macd: bool = True,
+        ma_periods: list | None = None,
         save: bool = True,
     ) -> str:
-        """绘制K线图
+        """绘制专业K线图（含均线 + MACD）
 
         Args:
             kline_df: 包含 date, open, close, high, low, volume 列的 DataFrame
             title: 图表标题
             show_volume: 是否显示成交量
+            show_ma: 是否显示均线
+            show_macd: 是否显示 MACD 指标
+            ma_periods: 均线周期列表，默认 [5, 10, 20, 60]
             save: 是否保存
 
         Returns:
@@ -117,61 +123,175 @@ class ChartService:
         plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
         plt.rcParams["axes.unicode_minus"] = False
 
-        if show_volume:
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3, 1], sharex=True)
-            self._apply_theme(fig, ax2)
-        else:
-            fig, ax1 = plt.subplots(1, 1, figsize=(14, 6))
-
-        self._apply_theme(fig, ax1)
+        if ma_periods is None:
+            ma_periods = [5, 10, 20, 60]
 
         df = kline_df.copy()
-        x = range(len(df))
+        x = list(range(len(df)))
 
-        # 绘制K线
-        for i, row in df.iterrows():
-            idx = list(df.index).index(i)
+        # ── 计算均线 ──
+        ma_colors = {5: "#FFD700", 10: "#FF69B4", 20: "#00BFFF", 60: "#FF8C00"}
+        ma_data = {}
+        if show_ma:
+            for p in ma_periods:
+                if len(df) >= p:
+                    ma_data[p] = df["close"].rolling(window=p).mean()
+
+        # ── 计算 MACD ──
+        macd_line, signal_line, macd_hist = None, None, None
+        if show_macd and len(df) >= 26:
+            ema12 = df["close"].ewm(span=12, adjust=False).mean()
+            ema26 = df["close"].ewm(span=26, adjust=False).mean()
+            macd_line = ema12 - ema26
+            signal_line = macd_line.ewm(span=9, adjust=False).mean()
+            macd_hist = (macd_line - signal_line) * 2  # 柱状图 (×2 放大)
+
+        # ── 布局 ──
+        num_panels = 1
+        ratios = [4]
+        if show_volume:
+            num_panels += 1
+            ratios.append(1)
+        if show_macd and macd_line is not None:
+            num_panels += 1
+            ratios.append(1.2)
+
+        fig, axes = plt.subplots(
+            num_panels, 1,
+            figsize=(16, 4 + num_panels * 2.5),
+            height_ratios=ratios,
+            sharex=True,
+        )
+        if num_panels == 1:
+            axes = [axes]
+
+        ax_main = axes[0]
+        ax_idx = 1
+        ax_vol = None
+        ax_macd = None
+        if show_volume:
+            ax_vol = axes[ax_idx]
+            ax_idx += 1
+        if show_macd and macd_line is not None:
+            ax_macd = axes[ax_idx]
+
+        for ax in axes:
+            self._apply_theme(fig, ax)
+
+        # ── 绘制K线 ──
+        for i_row, row in df.iterrows():
+            idx = list(df.index).index(i_row)
             o, c, h, l = row["open"], row["close"], row["high"], row["low"]
-            color = "#ff4444" if c < o else "#00c853"  # 中国市场：红涨绿跌
-            if c == o:
+            # 中国市场：红涨绿跌
+            color = "#00c853" if c >= o else "#ff4444"
+            if abs(c - o) < 1e-6:
                 color = "#999999"
 
             # 影线
-            ax1.plot([idx, idx], [l, h], color=color, linewidth=0.8)
+            ax_main.plot([idx, idx], [l, h], color=color, linewidth=0.8)
 
             # 实体
             body_bottom = min(o, c)
-            body_height = abs(c - o) or 0.01
+            body_height = abs(c - o) or (h - l) * 0.01
             rect = Rectangle(
                 (idx - 0.35, body_bottom), 0.7, body_height,
                 facecolor=color, edgecolor=color, linewidth=0.5,
             )
-            ax1.add_patch(rect)
+            ax_main.add_patch(rect)
 
-        ax1.set_title(title, fontsize=16, fontweight="bold")
-        ax1.set_ylabel("价格", fontsize=12)
-        ax1.grid(True, alpha=0.2)
+        # ── 绘制均线 ──
+        if show_ma and ma_data:
+            for p, ma_values in ma_data.items():
+                valid = ma_values.dropna()
+                if valid.empty:
+                    continue
+                start_idx = valid.index[0]
+                ma_x = [list(df.index).index(i) for i in valid.index]
+                ax_main.plot(
+                    ma_x, valid.values,
+                    color=ma_colors.get(p, "#AAAAAA"),
+                    linewidth=1.2,
+                    label=f"MA{p}",
+                    alpha=0.85,
+                )
+            ax_main.legend(
+                loc="upper left", fontsize=9, framealpha=0.7,
+                facecolor="#2a2a3d" if self.theme == "dark" else "white",
+                labelcolor="#cccccc" if self.theme == "dark" else "#333333",
+            )
 
-        # X 轴标签
-        step = max(1, len(df) // 10)
-        tick_positions = list(range(0, len(df), step))
-        tick_labels = [df.iloc[i]["date"].strftime("%m-%d") if hasattr(df.iloc[i]["date"], "strftime") else str(df.iloc[i]["date"])[:5] for i in tick_positions]
-        ax1.set_xticks(tick_positions)
-        ax1.set_xticklabels(tick_labels, rotation=45)
-        ax1.set_xlim(-1, len(df))
+        ax_main.set_title(title, fontsize=16, fontweight="bold", pad=12)
+        ax_main.set_ylabel("价格", fontsize=12)
+        ax_main.grid(True, alpha=0.15)
+        ax_main.set_xlim(-1, len(df))
 
-        # 成交量
-        if show_volume:
+        # 标注最高/最低价
+        if len(df) > 0:
+            hi_idx = df["high"].idxmax()
+            lo_idx = df["low"].idxmin()
+            hi_x = list(df.index).index(hi_idx)
+            lo_x = list(df.index).index(lo_idx)
+            ax_main.annotate(
+                f"↑ {df.loc[hi_idx, 'high']:.2f}",
+                xy=(hi_x, df.loc[hi_idx, "high"]),
+                fontsize=8, color="#00c853", fontweight="bold",
+                ha="center", va="bottom",
+            )
+            ax_main.annotate(
+                f"↓ {df.loc[lo_idx, 'low']:.2f}",
+                xy=(lo_x, df.loc[lo_idx, "low"]),
+                fontsize=8, color="#ff4444", fontweight="bold",
+                ha="center", va="top",
+            )
+
+        # ── 成交量 ──
+        if ax_vol is not None:
             vol = df["volume"].values
             vol_colors = [
                 "#00c853" if df.iloc[i]["close"] >= df.iloc[i]["open"] else "#ff4444"
                 for i in range(len(df))
             ]
-            ax2.bar(list(x), vol, color=vol_colors, alpha=0.7, width=0.7)
-            ax2.set_ylabel("成交量", fontsize=10)
-            ax2.grid(True, alpha=0.2)
+            ax_vol.bar(x, vol, color=vol_colors, alpha=0.7, width=0.7)
+            ax_vol.set_ylabel("成交量", fontsize=10)
+            ax_vol.grid(True, alpha=0.15)
+            # 成交量均线
+            if len(df) >= 5:
+                vol_ma5 = pd.Series(vol).rolling(5).mean()
+                ax_vol.plot(x, vol_ma5, color="#FFD700", linewidth=0.8, alpha=0.8, label="VOL MA5")
+            if len(df) >= 10:
+                vol_ma10 = pd.Series(vol).rolling(10).mean()
+                ax_vol.plot(x, vol_ma10, color="#FF69B4", linewidth=0.8, alpha=0.8, label="VOL MA10")
+
+        # ── MACD ──
+        if ax_macd is not None and macd_hist is not None:
+            # MACD 柱状图
+            hist_colors = ["#00c853" if v >= 0 else "#ff4444" for v in macd_hist]
+            ax_macd.bar(x, macd_hist, color=hist_colors, alpha=0.6, width=0.7)
+            # DIF 和 DEA 线
+            ax_macd.plot(x, macd_line, color="#2196F3", linewidth=1.0, label="DIF")
+            ax_macd.plot(x, signal_line, color="#FF9800", linewidth=1.0, label="DEA")
+            ax_macd.axhline(y=0, color="#888888", linestyle="--", linewidth=0.5)
+            ax_macd.set_ylabel("MACD", fontsize=10)
+            ax_macd.grid(True, alpha=0.15)
+            ax_macd.legend(
+                loc="upper left", fontsize=8, framealpha=0.7,
+                facecolor="#2a2a3d" if self.theme == "dark" else "white",
+                labelcolor="#cccccc" if self.theme == "dark" else "#333333",
+            )
+
+        # ── X 轴标签 ──
+        step = max(1, len(df) // 12)
+        tick_positions = list(range(0, len(df), step))
+        tick_labels = [
+            df.iloc[i]["date"].strftime("%m-%d") if hasattr(df.iloc[i]["date"], "strftime")
+            else str(df.iloc[i]["date"])[:5]
+            for i in tick_positions
+        ]
+        axes[-1].set_xticks(tick_positions)
+        axes[-1].set_xticklabels(tick_labels, rotation=45, fontsize=9)
 
         plt.tight_layout()
+        plt.subplots_adjust(hspace=0.08)
 
         filepath = ""
         if save:
