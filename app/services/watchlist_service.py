@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.db.database import get_session
-from app.models.stock import Stock
+from app.models.stock import Stock, normalize_stock_code
 
 
 class WatchlistService:
@@ -33,12 +33,13 @@ class WatchlistService:
         """添加自选股
 
         Args:
-            stock_code: 股票代码 (如 sh600519)
+            stock_code: 股票代码 (如 600519 或 sh600519，自动补全前缀)
             note: 关注备注/理由
 
         Returns:
             Stock 对象
         """
+        stock_code = normalize_stock_code(stock_code)
         self._ensure_session()
 
         try:
@@ -92,6 +93,7 @@ class WatchlistService:
         Returns:
             是否成功取消
         """
+        stock_code = normalize_stock_code(stock_code)
         self._ensure_session()
 
         try:
@@ -196,6 +198,7 @@ class WatchlistService:
         Returns:
             是否成功
         """
+        stock_code = normalize_stock_code(stock_code)
         self._ensure_session()
 
         try:

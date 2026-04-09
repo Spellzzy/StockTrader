@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_session
 from app.models.trade import Trade
+from app.models.stock import normalize_stock_code, Stock
 
 
 class TradeService:
@@ -44,7 +45,7 @@ class TradeService:
         """添加一笔交易记录
 
         Args:
-            stock_code: 股票代码 (如 sh600519)
+            stock_code: 股票代码 (如 600519 或 sh600519，自动补全前缀)
             action: buy 或 sell
             price: 成交价格
             quantity: 成交数量（股）
@@ -61,16 +62,12 @@ class TradeService:
         Returns:
             创建的 Trade 对象
         """
+        # 自动补全代码前缀
+        stock_code = normalize_stock_code(stock_code)
+
         # 自动判断市场
         if not market:
-            if stock_code.startswith("sh") or stock_code.startswith("sz"):
-                market = "A"
-            elif stock_code.startswith("hk"):
-                market = "HK"
-            elif stock_code.startswith("us"):
-                market = "US"
-            else:
-                market = "A"
+            market = Stock.parse_market(stock_code)
 
         # 自动查询股票名称（如果未提供）
         if not stock_name:

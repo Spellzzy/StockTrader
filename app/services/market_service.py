@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Optional
 
 from app.data.stock_data_client import StockDataClient
+from app.models.stock import normalize_stock_code
 
 
 class MarketService:
@@ -18,6 +19,7 @@ class MarketService:
 
     def get_quote(self, *codes: str) -> dict:
         """获取实时行情"""
+        codes = tuple(normalize_stock_code(c) for c in codes)
         return self.client.quote(*codes)
 
     def get_kline_df(
@@ -38,6 +40,7 @@ class MarketService:
         Returns:
             包含 date, open, close, high, low, volume, amount, turnover 的 DataFrame
         """
+        code = normalize_stock_code(code)
         data = self.client.kline(code, period, count, adjust)
 
         # 解析 data.nodes 结构
@@ -100,20 +103,24 @@ class MarketService:
 
     def get_minute_df(self, code: str) -> pd.DataFrame:
         """获取分时数据转为 DataFrame"""
+        code = normalize_stock_code(code)
         data = self.client.minute(code)
         # 根据实际返回结构解析
         return pd.DataFrame(data) if isinstance(data, list) else pd.DataFrame()
 
     def get_finance(self, code: str, report_type: str = "summary", count: int = 4) -> dict:
         """获取财务数据"""
+        code = normalize_stock_code(code)
         return self.client.finance(code, report_type, count)
 
     def get_profile(self, code: str) -> dict:
         """获取公司简况"""
+        code = normalize_stock_code(code)
         return self.client.profile(code)
 
     def get_fund_flow(self, code: str, days: int = 20) -> dict:
         """获取资金流向（自动判断市场）"""
+        code = normalize_stock_code(code)
         if code.startswith("hk"):
             return self.client.hkfund(code, "day", days)
         else:
@@ -121,12 +128,15 @@ class MarketService:
 
     def get_news(self, code: str, page: int = 1, size: int = 20) -> dict:
         """获取新闻"""
+        code = normalize_stock_code(code)
         return self.client.news(code, page, size, news_type=3)
 
     def get_rating(self, code: str) -> dict:
         """获取机构评级"""
+        code = normalize_stock_code(code)
         return self.client.rating(code)
 
     def get_chip(self, code: str) -> dict:
         """获取筹码分布"""
+        code = normalize_stock_code(code)
         return self.client.chip(code)

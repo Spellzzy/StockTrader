@@ -8,6 +8,7 @@ from sqlalchemy import select, and_
 
 from app.db.database import get_session
 from app.models.alert import Alert, AlertHistory, AlertConditionType
+from app.models.stock import normalize_stock_code
 from app.services.market_service import MarketService
 from app.ai.feature_engine import FeatureEngine
 
@@ -47,7 +48,7 @@ class AlertService:
         """添加预警规则
 
         Args:
-            stock_code: 股票代码 (如 sh600519)
+            stock_code: 股票代码 (如 600519 或 sh600519，自动补全前缀)
             condition_type: 条件类型 (price_above, rsi_below, macd_cross 等)
             threshold: 阈值 (价格/百分比，MACD金叉等信号类无需阈值)
             repeat: 触发后是否继续监控（可重复触发）
@@ -56,6 +57,7 @@ class AlertService:
         Returns:
             创建的 Alert 对象
         """
+        stock_code = normalize_stock_code(stock_code)
         # 验证条件类型
         try:
             ctype = AlertConditionType(condition_type)
