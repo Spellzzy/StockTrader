@@ -13,6 +13,7 @@
     stock-ai analyze(a)/test-llm                      LLM 深度分析
     stock-ai alert-*(al-*)/watch(wa)                  实时监控/条件预警
     stock-ai bt/bt-list/bt-compare                    回测引擎
+    stock-ai digest(dg)/digest-push(dg-p)             智能日报/AI盯盘助手
     stock-ai dashboard(d)                             TUI 全屏面板
 """
 
@@ -58,6 +59,7 @@ ai_app = typer.Typer(help="AI 预测分析", no_args_is_help=True, hidden=True)
 alert_app = typer.Typer(help="预警监控管理", no_args_is_help=True, hidden=True)
 backtest_app = typer.Typer(help="回测引擎", no_args_is_help=True, hidden=True)
 notify_app = typer.Typer(help="消息推送管理", no_args_is_help=True, hidden=True)
+digest_app = typer.Typer(help="智能日报（AI 盯盘助手）", no_args_is_help=True, hidden=True)
 
 app.add_typer(trade_app, name="trade")
 app.add_typer(portfolio_app, name="portfolio")
@@ -69,6 +71,8 @@ app.add_typer(ai_app, name="ai")
 app.add_typer(alert_app, name="alert")
 app.add_typer(backtest_app, name="backtest")
 app.add_typer(notify_app, name="notify")
+app.add_typer(digest_app, name="digest")
+
 
 
 # ==================== 初始化回调 ====================
@@ -895,6 +899,11 @@ register_backtest_commands(backtest_app, _self_module)
 # ==================== 预警监控（从 commands/alert.py 加载）====================
 from app.commands.alert import register_alert_commands
 register_alert_commands(alert_app, _self_module)
+
+
+# ==================== 智能日报（从 commands/digest.py 加载）====================
+from app.commands.digest import register_digest_commands
+register_digest_commands(digest_app, _self_module)
 
 
 # ==================== 消息推送命令 ====================

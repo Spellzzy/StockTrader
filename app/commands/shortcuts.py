@@ -733,6 +733,58 @@ def register_shortcuts(app: typer.Typer, cli_module):
         """notify-list 的缩写"""
         cli_module._notify_list_impl()
 
+    # ==================== 智能日报 ====================
+
+    @app.command("digest", help="生成自选股智能日报 (缩写: dg)")
+    def quick_digest(
+        dl: bool = typer.Option(False, "--dl", help="使用深度学习模型"),
+        llm: bool = typer.Option(False, "--llm", help="追加 LLM 深度分析"),
+        push: bool = typer.Option(False, "--push", "-p", help="生成后推送"),
+        auto_alert: bool = typer.Option(False, "--auto-alert", help="自动为高风险股票配置预警"),
+    ):
+        """生成自选股智能日报（AI 盯盘助手）"""
+        cli_module.digest_run(dl=dl, llm=llm, top=3, bottom=2, push=push, auto_alert=auto_alert)
+
+    @app.command("dg", hidden=True)
+    def alias_dg(
+        dl: bool = typer.Option(False, "--dl", help="使用深度学习模型"),
+        llm: bool = typer.Option(False, "--llm", help="追加 LLM 深度分析"),
+        push: bool = typer.Option(False, "--push", "-p", help="生成后推送"),
+        auto_alert: bool = typer.Option(False, "--auto-alert", help="自动为高风险股票配置预警"),
+    ):
+        """digest 的缩写"""
+        cli_module.digest_run(dl=dl, llm=llm, top=3, bottom=2, push=push, auto_alert=auto_alert)
+
+    @app.command("digest-push", help="生成并推送智能日报 (缩写: dg-p)")
+    def quick_digest_push(
+        dl: bool = typer.Option(False, "--dl", help="使用深度学习模型"),
+        llm: bool = typer.Option(False, "--llm", help="追加 LLM 分析"),
+    ):
+        """生成并推送智能日报"""
+        cli_module.digest_push(dl=dl, llm=llm)
+
+    @app.command("dg-p", hidden=True)
+    def alias_dg_p(
+        dl: bool = typer.Option(False, "--dl", help="使用深度学习模型"),
+        llm: bool = typer.Option(False, "--llm", help="追加 LLM 分析"),
+    ):
+        """digest-push 的缩写"""
+        cli_module.digest_push(dl=dl, llm=llm)
+
+    @app.command("digest-preview", help="快速预览智能日报 (缩写: dg-v)")
+    def quick_digest_preview(
+        dl: bool = typer.Option(False, "--dl", help="使用深度学习模型"),
+    ):
+        """快速预览智能日报（仅扫描，不 LLM 不推送）"""
+        cli_module.digest_preview(dl=dl)
+
+    @app.command("dg-v", hidden=True)
+    def alias_dg_v(
+        dl: bool = typer.Option(False, "--dl", help="使用深度学习模型"),
+    ):
+        """digest-preview 的缩写"""
+        cli_module.digest_preview(dl=dl)
+
     # ==================== TUI Dashboard ====================
 
     @app.command("dashboard", help="启动 TUI 全屏 Dashboard (缩写: d)")
