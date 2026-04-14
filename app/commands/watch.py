@@ -159,12 +159,40 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
     _TECH_CACHE_TTL = 300  # 技术指标缓存有效期（秒），日K级指标5分钟刷新即可
 
     idx_info = f" + {len(index_codes)}指数" if index_codes else ""
-    console.print(f"[cyan]👀 实时看盘模式 — 监控 {stock_count} 只个股{idx_info} (每{interval}秒刷新, Ctrl+C 退出)[/cyan]\n")
+    console.print(f"[cyan]👀 实时看盘模式 — 监控 {stock_count} 只个股{idx_info} (每{interval}秒刷新, 收盘自动结束 / Ctrl+C 退出)[/cyan]\n")
 
     try:
         import time as time_mod
 
+        def _is_market_closed() -> bool:
+            """判断当前是否已过收盘时间（15:00），若已过则应结束看盘"""
+            now = datetime.now()
+            close_time = now.replace(hour=15, minute=0, second=0, microsecond=0)
+            return now >= close_time
+
+        def _is_before_market_open() -> bool:
+            """判断当前是否在开盘前（09:15 之前）"""
+            now = datetime.now()
+            pre_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+            return now < pre_open
+
         while True:
+            # ── 交易时间检查：过了收盘时间自动退出 ──
+            if _is_market_closed():
+                console.print(
+                    f"\n[cyan]🔔 已过收盘时间 (15:00)，自动结束看盘模式 "
+                    f"(共刷新 {round_count} 轮)[/cyan]"
+                )
+                return
+
+            # 开盘前提示
+            if round_count == 0 and _is_before_market_open():
+                now_t = datetime.now().strftime("%H:%M:%S")
+                console.print(
+                    f"[yellow]⏰ 当前 {now_t}，尚未开盘 (09:15 集合竞价 / 09:30 连续竞价)，"
+                    f"将持续等待并自动刷新...[/yellow]\n"
+                )
+
             round_count += 1
             now_str = datetime.now().strftime("%H:%M:%S")
             has_prev = bool(prev_quotes)
@@ -730,12 +758,24 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                         console.print(f"[dim]📈 量比数据加载中 (剩余{_pending_count}只，每轮补充{_VR_BATCH}只)[/dim]")
                     total_api_calls += round_api_calls
                     rate_per_hour = total_api_calls / (round_count * interval) * 3600 if round_count > 0 else 0
+                    # 距收盘倒计时
+                    _now_dt = datetime.now()
+                    _close_dt = _now_dt.replace(hour=15, minute=0, second=0, microsecond=0)
+                    _remaining = _close_dt - _now_dt
+                    if _remaining.total_seconds() > 0:
+                        _rem_min = int(_remaining.total_seconds() // 60)
+                        _rem_h, _rem_m = divmod(_rem_min, 60)
+                        _rem_str = f"{_rem_h}时{_rem_m}分" if _rem_h > 0 else f"{_rem_m}分钟"
+                        _countdown = f"距收盘: {_rem_str} | "
+                    else:
+                        _countdown = ""
                     console.print(
                         f"[dim]下次刷新: {interval}秒后 | "
+                        f"{_countdown}"
                         f"本轮请求: {round_api_calls}次 | "
                         f"累计: {total_api_calls}次/{round_count}轮 "
                         f"(≈{rate_per_hour:.0f}次/小时) "
-                        f"(Ctrl+C 退出)[/dim]\n"
+                        f"(Ctrl+C 退出 / 收盘自动结束)[/dim]\n"
                     )
 
                 # 保存当前轮数据作为下一轮的对比基准（仅个股）

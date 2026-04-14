@@ -23,6 +23,7 @@
   - [AI 预测](#ai-预测)
   - [预警监控](#预警监控)
   - [实时看盘](#实时看盘)
+  - [智能日报](#智能日报)
 - [回测引擎](#回测引擎)
 - [消息推送](#消息推送)
 - [数据说明](#数据说明)
@@ -158,9 +159,9 @@ stock-ai chart-winloss               # 胜负统计图
 ### 日常使用循环
 
 ```
-搜索/看行情 → 加自选 → 回测验证 → 设预警 → 看盘监控 → 买入 → 看持仓 → 卖出 → 复盘分析
-     ↑                                                                       |
-     └───────────────────────────────────────────────────────────────────────┘
+搜索/看行情 → 加自选 → 回测验证 → 设预警 → 看盘监控/智能日报 → 买入 → 看持仓 → 卖出 → 复盘分析
+     ↑                                                                              |
+     └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -222,6 +223,10 @@ stock-ai chart-winloss               # 胜负统计图
 | **👀 实时看盘** | | | |
 | 看盘模式 | `stock-ai watch` | `wa` | `stock-ai wa` |
 | 指定股票 | `stock-ai watch -c <代码>` | `wa` | `stock-ai wa -c sh600519,sz000985` |
+| **📰 智能日报** | | | |
+| 生成日报 | `stock-ai digest` | `dg` | `stock-ai dg` |
+| 生成+推送 | `stock-ai digest-push` | `dg-p` | `stock-ai dg-p` |
+| 快速预览 | `stock-ai digest-preview` | `dg-v` | `stock-ai dg-v` |
 | **📈 回测引擎** | | | |
 | 运行回测 | `stock-ai bt <代码>` | — | `stock-ai bt sh600519 -s rsi -d 365` |
 | 查看策略 | `stock-ai bt-list` | — | `stock-ai bt-list` |
@@ -249,6 +254,7 @@ stock-ai t                        # 交易记录 (trades)
 stock-ai ss                       # 自选股列表 (stars)
 stock-ai p  sh600519              # AI 预测 (predict)
 stock-ai a  sh600519              # LLM 深度分析 (analyze)
+stock-ai dg                       # 智能日报 (digest)
 ```
 
 ### 行情研究
@@ -311,6 +317,17 @@ stock-ai wa                                 # 实时看盘 (watch)
 stock-ai wa -c sh600519,sz000985 -i 15      # 指定股票看盘
 ```
 
+### 智能日报
+
+```
+stock-ai dg                              # 生成日报 (digest)
+stock-ai dg --llm                        # 日报 + LLM 深度分析
+stock-ai dg --push                       # 生成并推送
+stock-ai dg --llm --push --auto-alert    # 全套：AI+LLM+推送+自动预警
+stock-ai dg-p                            # 生成并推送 (digest-push)
+stock-ai dg-v                            # 快速预览 (digest-preview)
+```
+
 ### 回测引擎
 
 ```
@@ -366,6 +383,9 @@ stock-ai nt -c email                     # 仅测试邮件渠道
 | `al-h` | alert-history | **al**ert-**h**istory 历史 |
 | `al-tp` | alert-types | **al**ert-**t**y**p**es 类型 |
 | `wa` | watch | **wa**tch 看盘 |
+| `dg` | digest | **d**i**g**est 日报 |
+| `dg-p` | digest-push | **d**i**g**est-**p**ush 推送日报 |
+| `dg-v` | digest-preview | **d**i**g**est pre**v**iew 预览 |
 | `bt` | backtest run | **b**ack**t**est 回测 |
 | `bt-list` | backtest list | 查看回测策略 |
 | `bt-compare` | backtest compare | 多策略对比 |
@@ -834,6 +854,7 @@ stock-ai watch [选项]
 |------|------|--------|
 | `-c / --codes` | 股票代码（逗号分隔） | 自选股列表 |
 | `-i / --interval` | 刷新间隔（秒） | 30 |
+| `-s / --sort` | 排序字段：chg/amp/vol/vr/tr | chg |
 | `--alert-only` | 仅监控预警，不显示行情表 | 关闭 |
 
 **示例：**
@@ -842,13 +863,18 @@ stock-ai watch [选项]
 stock-ai watch                                     # 看盘自选股，30秒刷新
 stock-ai watch -c sh600519,sz000985 -i 15          # 指定股票，15秒刷新
 stock-ai watch --alert-only                        # 仅监控预警（不显示行情）
+stock-ai watch -s vol                              # 按成交额排序
 ```
 
-看盘模式会持续运行，按 `Ctrl+C` 退出。每轮刷新会显示：
-- 📊 实时行情表（现价、涨跌幅、成交量等）
+看盘模式会持续运行，**收盘（15:00）后自动结束**，也可手动按 `Ctrl+C` 退出。每轮刷新会显示：
+- 📊 大盘指数面板（上证/深证/创业板/科创50 + 两市成交额）
+- 📊 实时行情表（现价、涨跌幅、成交量、振幅、量比、委比、内外盘、距涨停/跌停等）
 - 📊 变动追踪表（第2轮起，对比上一轮的差异）
-- ⚡ 异动捕捉提醒（价格快速变动或放量时自动提醒）
+- ⚡ 异动捕捉提醒（价格快速变动、放量、振幅骤增、换手飙升、逼近涨跌停）
 - 🚨 预警触发提醒（如果有预警被触发）
+- ⏰ 距收盘倒计时
+
+> 💡 开盘前启动看盘会自动等待，不需要手动掐时间。
 
 #### 变动追踪
 
@@ -858,7 +884,10 @@ stock-ai watch --alert-only                        # 仅监控预警（不显示
 |---|---|
 | **价格变动** | 与上一轮的价格差（带↑/↓箭头） |
 | **涨跌幅Δ** | 涨跌幅百分比的变化量 |
+| **振幅Δ** | 振幅百分比的变化量 |
 | **成交量增量** | 本轮新增的成交量 |
+| **量比变动** | 成交量较上轮的百分比变动 |
+| **换手率Δ** | 换手率的变化量 |
 | **累计变动** | 相对首轮监控开始时的总变动幅度 |
 | **动向** | 📈上行 / 📉下行 / 横盘 + 速度标签（⚡快速 / 🔥活跃） |
 
@@ -869,8 +898,118 @@ stock-ai watch --alert-only                        # 仅监控预警（不显示
 - 🚀 **快速拉升** — 单轮价格上涨 ≥ 0.5%
 - 💥 **快速下跌** — 单轮价格下跌 ≥ 0.5%
 - 📦 **放量** — 成交量增量超过上轮总量的 20%
+- 🌊 **振幅骤增** — 振幅单轮扩大 ≥ 0.5%
+- 🔄 **换手飙升** — 换手率单轮增加 ≥ 0.3%
+- 🔺 **逼近涨停** — 距涨停价 < 1%
+- 🔻 **逼近跌停** — 距跌停价 < 1%
 
 > 💡 建议：使用较短的刷新间隔（如 `-i 15`）可以更灵敏地捕捉异动。
+
+---
+
+### 智能日报
+
+智能日报（AI 盯盘助手）会批量扫描自选股，通过 AI 模型分析每只股票的走势，自动分类为看涨/震荡/看跌，并生成人话摘要。支持可选的 LLM 深度分析和自动推送。
+
+#### 核心能力
+
+- 🤖 **批量 AI 扫描** — 一键扫描所有自选股，输出综合信号
+- 📊 **自动分类** — 看涨/震荡/看跌三档分类 + 星级评分排序
+- 🧠 **LLM 深度分析** — 可选追加大模型分析，生成投资建议
+- 📱 **一键推送** — 生成后自动推送到已配置的通知渠道
+- 🔔 **自动预警** — 可为高风险股票自动配置预警规则
+
+#### 三个子命令
+
+| 命令 | 缩写 | 说明 |
+|------|------|------|
+| `stock-ai digest` | `dg` | 生成完整日报（AI 扫描 + 分类 + 人话摘要） |
+| `stock-ai digest-push` | `dg-p` | 生成日报并推送到手机 |
+| `stock-ai digest-preview` | `dg-v` | 快速预览（仅扫描，不 LLM 不推送） |
+
+#### 命令选项
+
+```bash
+stock-ai digest [选项]
+```
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `--dl` | 使用深度学习模型 (LSTM) | 关闭 |
+| `--llm` | 追加 LLM 深度分析 | 关闭 |
+| `--push / -p` | 生成后推送到通知渠道 | 关闭 |
+| `--auto-alert` | 自动为高风险股票配置预警 | 关闭 |
+
+#### 使用示例
+
+```bash
+# 快速预览（只扫描，不 LLM 不推送）
+stock-ai digest-preview        # 缩写: dg-v
+
+# 完整日报（AI 扫描 + 分类 + 人话摘要）
+stock-ai digest                # 缩写: dg
+
+# 完整日报 + LLM 深度分析
+stock-ai digest --llm
+
+# 生成并推送到手机（需先配置通知渠道）
+stock-ai digest --push         # 或 stock-ai digest-push (dg-p)
+
+# 一键全套：AI + LLM + 推送 + 自动预警
+stock-ai digest --llm --push --auto-alert
+```
+
+#### 日报内容
+
+日报会输出以下内容：
+
+- 📈 **看涨组** — 评分最高的 N 只股票，附信号分析
+- 📉 **看跌组** — 评分最低的 N 只股票，附风险提示
+- 📊 **震荡组** — 其余股票的简要状态
+- 🧠 **LLM 分析**（可选）— 大模型对整体持仓的综合分析和操作建议
+- 🔔 **自动预警**（可选）— 为看跌/高风险股票自动设置预警规则
+
+#### 定时执行
+
+可通过系统计划任务实现每日自动执行：
+
+**Windows 计划任务：**
+
+```bash
+# 上午开盘后执行
+schtasks /create /tn "StockAI_AM" /tr "python scripts/scheduled_digest.py" /sc daily /st 10:00
+
+# 下午收盘前执行
+schtasks /create /tn "StockAI_PM" /tr "python scripts/scheduled_digest.py" /sc daily /st 14:30
+```
+
+**Linux crontab：**
+
+```bash
+# 每个交易日上午 10:00 和下午 14:30 执行
+0 10 * * 1-5 cd /path/to/stock-trader-ai && python scripts/scheduled_digest.py
+30 14 * * 1-5 cd /path/to/stock-trader-ai && python scripts/scheduled_digest.py
+```
+
+> 定时脚本会自动判断交易日，非交易日不会执行。
+
+#### 工作原理
+
+```
+自选股列表
+  ↓
+批量获取行情 + AI 模型预测（XGBoost / RandomForest / 可选 LSTM）
+  ↓
+按综合评分排序 → 分类（看涨 / 震荡 / 看跌）
+  ↓
+组装 Markdown + Rich 终端 双格式人话摘要
+  ↓
+可选: LLM 深度分析（整体持仓点评 + 操作建议）
+  ↓
+可选: 推送到通知渠道（微信/钉钉/飞书/Telegram/邮件...）
+  ↓
+可选: 为高风险股票自动配置预警规则
+```
 
 ---
 
