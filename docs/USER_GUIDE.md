@@ -1191,6 +1191,130 @@ stock-ai bt-compare sh600519 -s "rsi,turtle,macd_cross"  # 指定策略对比
 
 ---
 
+## 选股引擎（Screener）
+
+通过自定义条件组合，从市场中筛选符合要求的股票。条件可在 `config.yaml` 的 `screener` 段灵活配置，无需改代码。
+
+### 命令速查
+
+```bash
+# 同时扫描买入+卖出信号（默认）
+stock-ai screen                       # 缩写: sn
+
+# 仅买入扫描
+stock-ai sn --side buy
+
+# 仅卖出扫描（基于当前持仓）
+stock-ai sn --side sell
+
+# 临时切换股票池
+stock-ai sn --pool watchlist          # 自选股
+stock-ai sn --pool portfolio          # 当前持仓
+stock-ai sn --pool all_a              # 全A股 (~5000只)
+stock-ai sn --pool "sh600519,sz000858"   # 直接指定代码
+stock-ai sn --pool "file:./codes.txt"    # 本地文件（每行一个代码）
+
+# 临时改聚合模式
+stock-ai sn --mode-buy any            # 任一条件命中即可（默认 all）
+stock-ai sn --mode-buy atleast:3      # 至少 3 条满足
+
+# 命中后推送到通知渠道
+stock-ai sn --push
+
+# 列出所有可用条件
+stock-ai sn --list-conditions
+
+# 全A代码缓存管理
+stock-ai sn-pool-build                # 查看缓存信息（无缓存则首次构建）
+stock-ai sn-pool-build --force        # 强制重建
+```
+
+### 扫描全A股市场
+
+要扫描全A股市场（约 5000+ 只），第一次需要构建代码缓存：
+
+```bash
+# 第一步：构建全A代码缓存（约 1~3 分钟，仅首次）
+stock-ai sn-pool-build
+
+# 第二步：直接扫描全A
+stock-ai sn --pool all_a
+
+# 缓存默认 7 天有效，过期会自动重建；也可手动刷新
+stock-ai sn --pool all_a:refresh
+```
+
+> ⏱️ **耗时参考**：5000 只股票全A扫描，并发 4 线程约 5~10 分钟（受限于行情接口带宽）。
+> 想加快可以在 config.yaml 把 `max_workers` 调到 8，但请注意接口频控。
+>
+> ⚠️ **建议**：全A扫描比较耗时，可以用 `pool_size_limit` 控制规模做局部测试，
+> 或先用 `--pool watchlist` 把规则调好再放大。
+
+### 配置示例（config.yaml）
+
+```yaml
+screener:
+  pool: "watchlist"          # 默认股票池
+  min_kline: 30              # 最少 K 线数
+  benchmark: "sz399101"      # 行业/大盘基准（中证1000）
+
+  buy:
+    mode: "all"              # 所有条件都满足才命中
+    rules:
+      - { name: ma_uptrend,    params: { ma: 20, lookback: 5 } }   # MA20 向上
+      - { name: price_above_ma, params: { ma: 20 } }                # 价站上 MA20
+      - { name: volume_expand, params: { ma_window: 5, ratio: 1.5 } }  # 量比 ≥1.5
+      - { name: sector_strong, params: { window: 5 } }              # 5日跑赢基准
+
+  sell:
+    mode: "any"              # 任一条件触发即卖
+    rules:
+      - { name: price_below_ma, params: { ma: 10 } }                # 跌破 MA10
+      - { name: bearish_volume, params: { drop_pct: 3.0, vol_ratio: 1.5 } }  # 放量长阴
+      - { name: loss_pct,       params: { threshold: 8.0 } }        # 亏损 8%
+```
+
+### 内置条件清单
+
+| 条件名 | 用途 | 主要参数 |
+|---|---|---|
+| `ma_uptrend` | 均线向上 | `ma`(均线周期), `lookback`(回看天数) |
+| `price_above_ma` | 价站上均线 | `ma` |
+| `price_below_ma` | 价跌破均线 | `ma` |
+| `volume_expand` | 成交量放大 | `ma_window`, `ratio` |
+| `sector_strong` | 跑赢基准 | `window`, `advantage`(领先幅度%) |
+| `ma_bull` | 多头排列 MA5>10>20 | — |
+| `macd_golden` / `macd_dead` | MACD 金叉/死叉 | `lookback` |
+| `rsi_below` / `rsi_above` | RSI 超卖/超买 | `period`, `threshold` |
+| `breakout` | 突破 N 日新高 | `window` |
+| `bearish_volume` | 放量长阴 | `drop_pct`, `vol_ratio`, `ma_window` |
+| `loss_pct` / `profit_pct` | 亏损/盈利达阈值（需持仓） | `threshold`(%) |
+
+### 聚合模式
+
+- **`all`** — 全部条件都满足（默认买入用）
+- **`any`** — 任一条件满足（默认卖出用）
+- **`atleast:N`** — 至少 N 个条件满足
+
+### 扩展自定义条件
+
+在 `app/services/screener_service.py` 用装饰器注册即可：
+
+```python
+@register_condition("my_custom")
+def my_custom(ctx: ScreenContext, params: dict) -> ConditionResult:
+    # ctx.df 已含 ma5/ma10/ma20/macd/rsi 等所有指标
+    # ctx.last 是最新一根 K 线
+    # ctx.position 是持仓信息（卖出场景才有）
+    threshold = params.get("threshold", 0)
+    val = ctx.last["close"]
+    return ConditionResult(val > threshold, f"价 {val:.2f}")
+```
+
+注册后立即可在 config.yaml 中引用，无需重启外部服务。
+
+---
+
 ## 消息推送
 
 预警触发后自动推送通知到手机/群聊/邮箱，支持 **7 种渠道** 同时推送。

@@ -62,7 +62,7 @@ def register_shortcuts(app: typer.Typer, cli_module):
         )
         display_name = trade.stock_name or name
         console.print(Panel(
-            f"[green]卖出[/green] {code} {display_name}\n"
+            f"[{get_down()}]卖出[/{get_down()}] {code} {display_name}\n"
             f"价格: {price}  数量: {quantity}  金额: {trade.amount:,.2f}\n"
             f"手续费: {trade.commission:.2f}  印花税: {trade.tax:.2f}",
             title=f"[OK] 卖出成功 (ID: {trade.id})", border_style="green",
@@ -706,6 +706,42 @@ def register_shortcuts(app: typer.Typer, cli_module):
         """watch 的缩写"""
         from app.commands.watch import do_watch
         do_watch(codes, interval, alert_only, sort_by)
+
+    # ==================== 选股引擎 ====================
+
+    @app.command("screen", help="按 config.yaml 配置筛选股票 (缩写: sn)")
+    def quick_screen(
+        side: str = typer.Option("both", "--side", "-s", help="扫描方向: buy/sell/both"),
+        pool: str = typer.Option("", "--pool", "-p", help="股票池覆盖: watchlist/portfolio/file:path/code1,code2"),
+        mode_buy: str = typer.Option("", "--mode-buy", help="买入聚合模式覆盖: all/any/atleast:N"),
+        mode_sell: str = typer.Option("", "--mode-sell", help="卖出聚合模式覆盖: all/any/atleast:N"),
+        push: bool = typer.Option(False, "--push", help="将命中结果推送到通知渠道"),
+        list_conditions: bool = typer.Option(False, "--list-conditions", help="仅列出所有可用条件"),
+    ):
+        """按 config.yaml screener 配置扫描股票池"""
+        from app.commands.screener import do_screen
+        do_screen(side, pool, mode_buy, mode_sell, push, list_conditions)
+
+    @app.command("sn", hidden=True)
+    def alias_sn(
+        side: str = typer.Option("both", "--side", "-s", help="扫描方向: buy/sell/both"),
+        pool: str = typer.Option("", "--pool", "-p", help="股票池覆盖"),
+        mode_buy: str = typer.Option("", "--mode-buy", help="买入聚合模式"),
+        mode_sell: str = typer.Option("", "--mode-sell", help="卖出聚合模式"),
+        push: bool = typer.Option(False, "--push", help="推送命中结果"),
+        list_conditions: bool = typer.Option(False, "--list-conditions", help="列出可用条件"),
+    ):
+        """screen 的缩写"""
+        from app.commands.screener import do_screen
+        do_screen(side, pool, mode_buy, mode_sell, push, list_conditions)
+
+    @app.command("sn-pool-build", help="构建/刷新全A代码缓存（用于 --pool all_a）")
+    def quick_pool_build(
+        force: bool = typer.Option(False, "--force", "-f", help="强制重建（即使缓存已存在）"),
+    ):
+        """构建/刷新全A代码缓存"""
+        from app.commands.screener import do_pool_build
+        do_pool_build(force=force)
 
     # ==================== 消息推送 ====================
 

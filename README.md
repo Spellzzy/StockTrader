@@ -15,6 +15,7 @@
 - 🔔 **实时预警** — 14种条件预警（价格/涨跌幅/RSI/MACD/KDJ/布林带/均线等）
 - 👀 **实时看盘** — 自动刷新行情 + 预警检测，支持自选股监控
 - 📈 **策略回测** — 7种内置策略回测引擎，多策略对比，完整绩效报告+可视化图表
+- 🎯 **选股引擎** — 可配置条件组合（MA/量能/RSI/MACD/板块强弱等），支持自选股/持仓/全A股扫描
 - 📬 **消息推送** — 7种渠道（Server酱/PushPlus/钉钉/飞书/Telegram/邮件/企业微信），预警触发自动推送
 
 ## 📦 安装
@@ -81,6 +82,13 @@ stock-ai bt sh600519                     # 默认MACD策略回测
 stock-ai bt sh600519 -s rsi -d 365 -g   # RSI策略回测365天+出图
 stock-ai bt-list                         # 查看可用策略
 stock-ai bt-compare sh600519             # 7个策略全量对比
+
+# 选股引擎（按 config.yaml 中的条件筛选）
+stock-ai sn                              # 扫自选股，买入+卖出双向
+stock-ai sn --side buy --pool watchlist  # 仅买入扫描
+stock-ai sn --pool all_a                 # 扫全A股 (~5000只，首次需构建缓存)
+stock-ai sn-pool-build                   # 构建/查看全A代码缓存
+stock-ai sn --list-conditions            # 列出所有可用条件
 ```
 
 ## 📁 项目结构
@@ -91,8 +99,10 @@ stock-trader-ai/
 │   ├── cli.py              # CLI 入口
 │   ├── models/             # 数据模型 (交易/持仓/自选/预警)
 │   ├── db/                 # 数据库层
-│   ├── services/           # 业务逻辑 (交易/持仓/自选/预警/行情/回测/通知)
-│   │   └── notification/  # 消息推送 (7种渠道)
+│   ├── services/           # 业务逻辑 (交易/持仓/自选/预警/行情/回测/选股/通知)
+│   │   ├── notification/  # 消息推送 (7种渠道)
+│   │   ├── screener_service.py   # 选股引擎 (可插拔条件注册表)
+│   │   └── pool_loader.py        # 全A代码探活+缓存
 │   ├── data/               # 数据获取（stock-data 封装）
 │   ├── ai/                 # AI 预测（ML + DL 模型 + LLM 分析）
 │   └── visualization/      # 可视化图表 (K线/收益曲线/回测权益曲线)
@@ -119,6 +129,23 @@ stock-trader-ai/
 | 深市A股 | sz + 6位 | sz000001（平安银行）|
 | 港股 | hk + 5位 | hk00700（腾讯控股）|
 | 美股 | us + 代码 | usAAPL（苹果）|
+
+## 📝 更新记录
+
+### 2026-06-10
+- 🎯 **新增选股引擎（Screener）** — 可配置条件组合，从市场筛选符合要求的股票
+  - 14 个内置条件：均线向上/价位/量能/RSI/MACD/多头排列/板块强弱/突破/放量长阴/盈亏比例 等
+  - 三种聚合模式：`all` / `any` / `atleast:N`
+  - 支持自选股 / 持仓 / 全A股 / 本地代码文件 / 直接代码列表 多种股票池
+  - 全A扫描：代码段穷举探活 + 本地缓存（默认7天有效）+ 多线程并发拉K线
+  - 命令：`stock-ai screen` (`sn`) / `stock-ai sn-pool-build`
+  - 命中结果支持一键推送到所有已配置渠道
+  - 详见 [USER_GUIDE](docs/USER_GUIDE.md#选股引擎screener)
+
+### 2026-04 之前
+- 看盘异动捕捉接入消息推送
+- 大盘指数面板颜色统一走全局主题
+- 智能日报、回测引擎、AI 预测、消息推送等核心能力
 
 ## 📄 License
 
