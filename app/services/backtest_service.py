@@ -421,6 +421,101 @@ class BacktestService:
         if equity_data:
             result.equity_curve = pd.DataFrame(equity_data)
 
+    @staticmethod
+    def curve_metrics(equity, initial_capital: float) -> dict:
+        """从权益序列算绩效（回撤 / 夏普），供单标的与组合共用"""
+        equity = np.asarray(equity, dtype=float)
+        metrics = {"max_drawdown": 0.0, "max_drawdown_amount": 0.0, "sharpe_ratio": 0.0}
+
+        if equity.size == 0 or initial_capital <= 0:
+            return metrics
+
+        peak = np.maximum.accumulate(equity)
+        drawdown = (peak - equity) / peak * 100
+        metrics["max_drawdown"] = round(float(np.max(drawdown)), 2)
+        metrics["max_drawdown_amount"] = round(float(np.max(peak - equity)), 2)
+
+        if equity.size > 1:
+            daily_returns = np.diff(equity) / equity[:-1]
+            if np.std(daily_returns) > 0:
+                excess = daily_returns - 0.03 / 250
+                metrics["sharpe_ratio"] = round(
+                    float(np.mean(excess) / np.std(excess) * np.sqrt(250)), 2
+                )
+        return metrics
+
+    def run_portfolio(
+        self,
+        codes: list,
+        strategy: str = "macd_cross",
+        days: int = 180,
+        initial_capital: float = 100000.0,
+        **kwargs,
+    ) -> dict:
+        """多标的组合回测（等权分配资金，各自独立跑单标的回测后合并权益曲线）
+
+        Args:
+            codes: 股票代码列表
+            strategy: 策略名称
+            days: 回测天数
+            initial_capital: 总资金
+            **kwargs: 透传给 run()（stop_loss / take_profit / fill_mode / slippage …）
+
+        Returns:
+            {"codes", "strategy", "initial_capital", "total_return", "max_drawdown",
+             "sharpe_ratio", "equity_curve", "details"}
+        """
+        codes = [c for c in dict.fromkeys(codes) if c]  # 去重且保序
+        if not codes:
+            return {}
+
+        per_capital = initial_capital / len(codes)
+        details = []
+        curves = []
+
+        for code in codes:
+            result = self.run(
+                code,
+                strategy=strategy,
+                days=days,
+                initial_capital=per_capital,
+                **kwargs,
+            )
+            details.append(result)
+            if result.equity_curve is not None and not result.equity_curve.empty:
+                curves.append(
+                    result.equity_curve[["date", "equity"]].rename(columns={"equity": code})
+                )
+
+        if not curves:
+            return {"codes": codes, "strategy": strategy, "details": details}
+
+        merged = curves[0]
+        for curve in curves[1:]:
+            merged = pd.merge(merged, curve, on="date", how="outer")
+        merged = merged.sort_values("date").ffill().bfill()
+
+        total_equity = merged.drop(columns=["date"]).sum(axis=1)
+        equity_curve = pd.DataFrame({"date": merged["date"], "equity": total_equity})
+
+        final = float(total_equity.iloc[-1])
+        metrics = self.curve_metrics(total_equity.values, initial_capital)
+
+        return {
+            "codes": codes,
+            "strategy": strategy,
+            "initial_capital": initial_capital,
+            "final_capital": round(final, 2),
+            "total_return": round((final - initial_capital) / initial_capital * 100, 2),
+            "max_drawdown": metrics["max_drawdown"],
+            "max_drawdown_amount": metrics["max_drawdown_amount"],
+            "sharpe_ratio": metrics["sharpe_ratio"],
+            "start_date": str(equity_curve["date"].iloc[0])[:10],
+            "end_date": str(equity_curve["date"].iloc[-1])[:10],
+            "equity_curve": equity_curve,
+            "details": details,
+        }
+
     def _calculate_metrics(self, df: pd.DataFrame, result: BacktestResult):
         """计算绩效指标"""
         trades = result.trades

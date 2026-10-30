@@ -120,6 +120,76 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
             "[/dim]"
         )
 
+    @backtest_app.command("portfolio")
+    def backtest_portfolio(
+        codes: str = typer.Argument(..., help="股票代码，逗号分隔 (如 600519,000001,00700)"),
+        strategy: str = typer.Option("macd_cross", "--strategy", "-s", help="策略名称"),
+        days: int = typer.Option(180, "--days", "-d", help="回测天数"),
+        capital: float = typer.Option(100000, "--capital", "-k", help="总资金(元)"),
+        stop_loss: float = typer.Option(0.0, "--stop-loss", "--sl", help="止损比例"),
+        take_profit: float = typer.Option(0.0, "--take-profit", "--tp", help="止盈比例"),
+        fill: str = typer.Option("next_open", "--fill", help="成交方式: next_open / close"),
+    ):
+        """多标的组合回测（等权分配资金）"""
+        from app.models.stock import normalize_stock_codes
+        from app.services.backtest_service import BacktestService
+
+        code_list = [c for c in normalize_stock_codes(codes).split(",") if c]
+        if not code_list:
+            console.print("[red]❌ 至少需要一个股票代码[/red]")
+            return
+
+        console.print(
+            f"[cyan]📊 组合回测 {len(code_list)} 只 | 策略: {strategy} | "
+            f"{days}天 | 总资金: {capital:,.0f}元[/cyan]"
+        )
+
+        with console.status("[cyan]逐只回测 → 合并权益曲线...[/cyan]"):
+            portfolio = BacktestService().run_portfolio(
+                code_list,
+                strategy=strategy,
+                days=days,
+                initial_capital=capital,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                fill_mode=fill,
+            )
+
+        if not portfolio or portfolio.get("equity_curve") is None:
+            console.print("[red]❌ 组合回测失败：没有可用的回测结果[/red]")
+            return
+
+        ret_color = "green" if portfolio["total_return"] >= 0 else "red"
+        console.print(
+            Panel(
+                f"总收益: [{ret_color}]{portfolio['total_return']:+.2f}%[/{ret_color}]\n"
+                f"期末资产: {portfolio['final_capital']:,.2f}\n"
+                f"最大回撤: {portfolio['max_drawdown']:.2f}%  "
+                f"夏普: {portfolio['sharpe_ratio']:.2f}\n"
+                f"区间: {portfolio['start_date']} ~ {portfolio['end_date']}",
+                title=f"📊 组合回测 ({strategy})",
+                border_style="cyan",
+            )
+        )
+
+        table = Table(box=box.ROUNDED, header_style="bold cyan", show_lines=True)
+        table.add_column("代码")
+        table.add_column("收益%", justify="right")
+        table.add_column("胜率%", justify="right")
+        table.add_column("交易", justify="right")
+        table.add_column("最大回撤%", justify="right")
+
+        for detail in portfolio["details"]:
+            color = "green" if detail.total_return >= 0 else "red"
+            table.add_row(
+                detail.code,
+                f"[{color}]{detail.total_return:+.2f}[/{color}]",
+                f"{detail.win_rate:.1f}",
+                str(detail.total_trades),
+                f"{detail.max_drawdown:.2f}",
+            )
+        console.print(table)
+
     @backtest_app.command("compare")
     def backtest_compare(
         code: str = typer.Argument(..., help="股票代码"),
@@ -218,6 +288,7 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
         cli_module.backtest_run = backtest_run
         cli_module.backtest_strategies = backtest_strategies
         cli_module.backtest_compare = backtest_compare
+        cli_module.backtest_portfolio = backtest_portfolio
         cli_module._render_backtest_result = _render_backtest_result
 
 

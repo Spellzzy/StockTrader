@@ -550,6 +550,19 @@ def register_shortcuts(app: typer.Typer, cli_module):
             fill=fill, slippage=slippage, chart=chart,
         )
 
+    @app.command("bt-pf", help="多标的组合回测（等权分配资金）")
+    def quick_bt_portfolio(
+        codes: str = typer.Argument(..., help="股票代码，逗号分隔"),
+        strategy: str = typer.Option("macd_cross", "--strategy", "-s", help="策略名称"),
+        days: int = typer.Option(180, "--days", "-d", help="回测天数"),
+        capital: float = typer.Option(100000, "--capital", "-k", help="总资金(元)"),
+    ):
+        """组合回测"""
+        cli_module.backtest_portfolio(
+            codes=codes, strategy=strategy, days=days, capital=capital,
+            stop_loss=0.0, take_profit=0.0, fill="next_open",
+        )
+
     @app.command("bt-list", help="查看可用回测策略")
     def quick_bt_list():
         """查看可用回测策略"""
@@ -725,10 +738,15 @@ def register_shortcuts(app: typer.Typer, cli_module):
         mode_sell: str = typer.Option("", "--mode-sell", help="卖出聚合模式覆盖: all/any/atleast:N"),
         push: bool = typer.Option(False, "--push", help="将命中结果推送到通知渠道"),
         list_conditions: bool = typer.Option(False, "--list-conditions", help="仅列出所有可用条件"),
+        backtest: bool = typer.Option(False, "--backtest", "--bt", help="命中后直接做组合回测"),
+        bt_days: int = typer.Option(180, "--bt-days", help="组合回测天数"),
     ):
         """按 config.yaml screener 配置扫描股票池"""
         from app.commands.screener import do_screen
-        do_screen(side, pool, mode_buy, mode_sell, push, list_conditions)
+        do_screen(
+            side, pool, mode_buy, mode_sell, push, list_conditions,
+            backtest=backtest, bt_days=bt_days,
+        )
 
     @app.command("sn", hidden=True)
     def alias_sn(
@@ -738,10 +756,13 @@ def register_shortcuts(app: typer.Typer, cli_module):
         mode_sell: str = typer.Option("", "--mode-sell", help="卖出聚合模式"),
         push: bool = typer.Option(False, "--push", help="推送命中结果"),
         list_conditions: bool = typer.Option(False, "--list-conditions", help="列出可用条件"),
+        backtest: bool = typer.Option(False, "--backtest", "--bt", help="命中后直接做组合回测"),
     ):
         """screen 的缩写"""
         from app.commands.screener import do_screen
-        do_screen(side, pool, mode_buy, mode_sell, push, list_conditions)
+        do_screen(
+            side, pool, mode_buy, mode_sell, push, list_conditions, backtest=backtest
+        )
 
     @app.command("sn-pool-build", help="构建/刷新全A代码缓存（用于 --pool all_a）")
     def quick_pool_build(

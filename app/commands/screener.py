@@ -24,6 +24,9 @@ def do_screen(
     mode_sell: str = "",
     push: bool = False,
     list_conditions: bool = False,
+    backtest: bool = False,
+    bt_days: int = 180,
+    bt_capital: float = 100000.0,
 ):
     """执行选股扫描
 
@@ -34,6 +37,9 @@ def do_screen(
         mode_sell: 卖出聚合模式覆盖
         push: 是否推送到通知渠道
         list_conditions: 仅列出所有可用条件
+        backtest: 命中后直接做多标的组合回测
+        bt_days: 组合回测天数
+        bt_capital: 组合回测总资金
     """
     from app.services.screener_service import ScreenerService, CONDITION_REGISTRY
 
@@ -169,6 +175,44 @@ def do_screen(
                 console.print("[yellow]⚠️ 推送渠道未启用[/yellow]")
         except Exception as e:
             console.print(f"[red]推送失败: {e}[/red]")
+
+    # ============ 选股结果直接回测 ============
+    if backtest:
+        _backtest_hits(all_hits, days=bt_days, capital=bt_capital)
+
+
+def _backtest_hits(hits, days: int = 180, capital: float = 100000.0):
+    """把选股命中的买入信号直接送进组合回测"""
+    buy_codes = [h.code for h in hits if h.side == "buy"]
+    if not buy_codes:
+        console.print("\n[dim]没有买入命中，跳过回测[/dim]")
+        return
+
+    from app.services.backtest_service import BacktestService
+
+    console.print(
+        f"\n[cyan]📊 对 {len(buy_codes)} 只买入命中做组合回测（{days}天，等权）...[/cyan]"
+    )
+    with console.status("[cyan]逐只回测 → 合并权益曲线...[/cyan]"):
+        portfolio = BacktestService().run_portfolio(
+            buy_codes, days=days, initial_capital=capital
+        )
+
+    if not portfolio or portfolio.get("equity_curve") is None:
+        console.print("[red]❌ 组合回测失败[/red]")
+        return
+
+    ret_color = "green" if portfolio["total_return"] >= 0 else "red"
+    console.print(
+        Panel(
+            f"总收益: [{ret_color}]{portfolio['total_return']:+.2f}%[/{ret_color}]  "
+            f"最大回撤: {portfolio['max_drawdown']:.2f}%  "
+            f"夏普: {portfolio['sharpe_ratio']:.2f}\n"
+            f"区间: {portfolio['start_date']} ~ {portfolio['end_date']}",
+            title="📊 选股命中组合回测",
+            border_style="cyan",
+        )
+    )
 
 
 # ============================================================================
