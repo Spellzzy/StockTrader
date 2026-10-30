@@ -25,6 +25,11 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
         stop_loss: float = typer.Option(0.0, "--stop-loss", "--sl", help="止损比例 (0.05=5%)"),
         take_profit: float = typer.Option(0.0, "--take-profit", "--tp", help="止盈比例 (0.1=10%)"),
         position: float = typer.Option(1.0, "--position", help="仓位比例 (0~1)"),
+        fill: str = typer.Option(
+            "next_open", "--fill",
+            help="成交方式: next_open=信号次日开盘成交(默认) / close=信号当日收盘成交(旧口径，含前视偏差)",
+        ),
+        slippage: float = typer.Option(0.0, "--slippage", help="滑点比例 (0.001=0.1%)"),
         chart: bool = typer.Option(False, "--chart", "-g", help="显示回测图表"),
     ):
         """运行回测"""
@@ -68,6 +73,8 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
                 stop_loss=stop_loss,
                 take_profit=take_profit,
                 position_size=position,
+                fill_mode=fill,
+                slippage=slippage,
             )
 
         _render_backtest_result(result)

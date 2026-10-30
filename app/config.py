@@ -50,6 +50,10 @@ DEFAULT_CONFIG = {
         "min_commission": 5.0,       # 单笔最低佣金
         "stamp_tax_rate": 0.001,     # 印花税 千1（仅 A 股卖出）
     },
+    "backtest": {
+        "fill_mode": "next_open",    # next_open=信号次日开盘成交 / close=信号当日收盘成交(含前视偏差)
+        "slippage": 0.0,             # 滑点比例
+    },
     "ai": {
         "llm": {
             "provider": "openai",

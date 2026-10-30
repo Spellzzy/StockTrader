@@ -1128,6 +1128,24 @@ stock-ai bt-compare sh600519 -s "macd_cross,rsi,turtle"
 
 默认参数可在 `config.yaml` 的 `backtest` 段中修改：
 
+#### 成交规则（重要）
+
+回测默认按 **`fill_mode: "next_open"`** 撮合，即「今天出信号、明天开盘成交」：
+
+- 第 N 根 K 线出现的信号，在第 N+1 根以**开盘价**成交，不使用信号当根收盘价（避免前视偏差）
+- **T+1**：买入当天不能卖出
+- **一字涨停无法买入**、**一字跌停无法卖出**（开=高=低=收 且方向相符）
+- 止损/止盈按当日**最低价/最高价**判断，成交价取止损价与开盘价中更差的一个
+- `slippage` 可设滑点：买入价上浮、卖出价下浮
+
+如需对照改造前的口径，用 `--fill close`（信号当日收盘价成交，结果偏乐观，不建议作为决策依据）：
+
+```bash
+stock-ai bt sh600519 -s macd_cross --fill close   # 旧口径（含前视偏差）
+stock-ai bt sh600519 -s macd_cross                # 默认：次日开盘成交
+stock-ai bt sh600519 -s macd_cross --slippage 0.001
+```
+
 ```yaml
 fees:
   commission_rate: 0.0003    # 手续费率 (万三)
@@ -1135,6 +1153,8 @@ fees:
   stamp_tax_rate: 0.001      # 印花税率 (千一，A股卖出收取)
 
 backtest:
+  fill_mode: "next_open"     # 成交方式: next_open / close
+  slippage: 0.0              # 滑点比例
   initial_capital: 100000    # 默认初始资金 (元)
   # commission_rate / tax_rate 不填则沿用上面的 fees 段
   stop_loss: 0.0             # 默认止损比例 (0=不止损)

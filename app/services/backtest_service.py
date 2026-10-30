@@ -63,6 +63,8 @@ class BacktestResult:
     tax_rate: float = 0.001  # 印花税 0.1% (卖出收取)
     stop_loss: float = 0.0  # 止损比例 (0=不止损)
     take_profit: float = 0.0  # 止盈比例 (0=不止盈)
+    fill_mode: str = "next_open"  # next_open=次日开盘成交 / close=信号当日收盘成交
+    slippage: float = 0.0  # 滑点比例
 
     # 绩效指标
     total_return: float = 0.0  # 总收益率 (%)
@@ -127,6 +129,8 @@ class BacktestService:
         stop_loss: float = 0.0,
         take_profit: float = 0.0,
         position_size: float = 1.0,
+        fill_mode: Optional[str] = None,
+        slippage: Optional[float] = None,
         **strategy_kwargs,
     ) -> BacktestResult:
         """运行回测
@@ -154,6 +158,12 @@ class BacktestService:
         if tax_rate is None:
             tax_rate = fee_model.stamp_tax_rate
 
+        bt_cfg = get_config().get("backtest", {}) or {}
+        if fill_mode is None:
+            fill_mode = bt_cfg.get("fill_mode", "next_open")
+        if slippage is None:
+            slippage = float(bt_cfg.get("slippage", 0.0))
+
         result = BacktestResult(
             code=code,
             strategy_name=strategy,
@@ -164,6 +174,8 @@ class BacktestService:
             tax_rate=tax_rate,
             stop_loss=stop_loss,
             take_profit=take_profit,
+            fill_mode=fill_mode,
+            slippage=slippage,
         )
 
         # 1. 获取历史数据 (多拉一些用于指标计算的预热期)
@@ -195,7 +207,9 @@ class BacktestService:
 
         # 4. 模拟交易
         logger.info("模拟交易...")
-        self._simulate_trades(df, result, position_size)
+        self._simulate_trades(
+            df, result, position_size, fill_mode=fill_mode, slippage=slippage
+        )
 
         # 5. 计算绩效
         logger.info("计算绩效指标...")
@@ -209,13 +223,32 @@ class BacktestService:
 
         return result
 
+    @staticmethod
+    def _is_limit_bar(row, prev_close: float, direction: str) -> bool:
+        """判断是否一字板（开=高=低=收），direction: up=涨停 / down=跌停"""
+        o, h, l, c = float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"])
+        if not (abs(h - l) < 1e-9 and abs(o - c) < 1e-9 and abs(o - h) < 1e-9):
+            return False
+        return c > prev_close if direction == "up" else c < prev_close
+
     def _simulate_trades(
         self,
         df: pd.DataFrame,
         result: BacktestResult,
         position_size: float = 1.0,
+        fill_mode: str = "next_open",
+        slippage: float = 0.0,
     ):
-        """按信号模拟交易，生成权益曲线"""
+        """按信号模拟交易，生成权益曲线
+
+        Args:
+            df: 含 date/open/high/low/close/signal 的 K 线
+            result: 回测结果对象（费率、止损止盈等参数从这里读取）
+            position_size: 每次买入使用的可用资金比例
+            fill_mode: next_open=信号次日开盘成交（默认，无前视偏差）
+                       close=信号当日收盘成交（旧行为，仅用于对照）
+            slippage: 滑点比例，买入价上浮、卖出价下浮
+        """
         capital = result.initial_capital
         position = 0  # 持仓股数
         entry_price = 0.0
@@ -228,84 +261,112 @@ class BacktestService:
         # 每日权益
         equity_data = []
         buy_commission = 0.0  # 当前持仓的买入手续费 (用于计算单笔利润)
+        pending = None  # 上一根 K 线产生的挂单，在下一根开盘执行
 
-        for idx, (i, row) in enumerate(df.iterrows()):
-            price = row["close"]
-            date_str = row["date"].strftime("%Y-%m-%d") if hasattr(row["date"], "strftime") else str(row["date"])[:10]
-            signal = row.get("signal", 0)
+        has_ohlc = all(c in df.columns for c in ("open", "high", "low"))
 
-            # 持仓时检查止损/止盈
-            if position > 0 and entry_price > 0:
-                change_pct = (price - entry_price) / entry_price
+        def _fmt_date(value) -> str:
+            return value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else str(value)[:10]
 
-                # 止损
-                if result.stop_loss > 0 and change_pct <= -result.stop_loss:
-                    signal = -1  # 强制卖出
-                    exit_reason = "stop_loss"
-                # 止盈
-                elif result.take_profit > 0 and change_pct >= result.take_profit:
-                    signal = -1  # 强制卖出
-                    exit_reason = "take_profit"
-                else:
-                    exit_reason = "signal"
+        def _buy(idx: int, price: float, date_str: str) -> bool:
+            nonlocal capital, position, entry_price, entry_date, entry_idx
+            nonlocal total_commission, buy_commission
+            available = capital * position_size
+            quantity = int(available / price / 100) * 100  # 按手（100股）取整
+            if quantity < 100:
+                return False
+            cost = quantity * price
+            commission = max(cost * result.commission_rate, result.min_commission)
+            total_commission += commission
+            capital -= (cost + commission)
+            position = quantity
+            entry_price = price
+            entry_date = date_str
+            entry_idx = idx
+            buy_commission = commission
+            return True
+
+        def _sell(idx: int, price: float, date_str: str, reason: str):
+            nonlocal capital, position, entry_price, total_commission, total_tax
+            revenue = position * price
+            commission = max(revenue * result.commission_rate, result.min_commission)
+            tax = revenue * result.tax_rate
+            total_commission += commission
+            total_tax += tax
+            capital += (revenue - commission - tax)
+
+            profit = (price - entry_price) * position - buy_commission - commission - tax
+            profit_rate = (price - entry_price) / entry_price * 100 if entry_price > 0 else 0
+
+            trades.append(TradeRecord(
+                entry_date=entry_date,
+                entry_price=entry_price,
+                exit_date=date_str,
+                exit_price=price,
+                quantity=position,
+                profit=round(profit, 2),
+                profit_rate=round(profit_rate, 2),
+                holding_days=idx - entry_idx,
+                exit_reason=reason,
+            ))
+
+            position = 0
+            entry_price = 0.0
+
+        for idx in range(len(df)):
+            row = df.iloc[idx]
+            date_str = _fmt_date(row["date"])
+            close = float(row["close"])
+            open_ = float(row["open"]) if has_ohlc else close
+            high = float(row["high"]) if has_ohlc else close
+            low = float(row["low"]) if has_ohlc else close
+            prev_close = float(df.iloc[idx - 1]["close"]) if idx > 0 else close
+            signal = int(row.get("signal", 0) or 0)
+
+            # 1) 执行上一根 K 线的挂单：次日开盘成交
+            if pending is not None:
+                side = pending["side"]
+                if side == 1 and position == 0:
+                    if not (has_ohlc and self._is_limit_bar(row, prev_close, "up")):
+                        _buy(idx, open_ * (1 + slippage), date_str)
+                elif side == -1 and position > 0 and idx > entry_idx:  # T+1
+                    if not (has_ohlc and self._is_limit_bar(row, prev_close, "down")):
+                        _sell(idx, open_ * (1 - slippage), date_str, pending["reason"])
+                pending = None
+
+            # 2) 持仓中的止损 / 止盈：用当日最低/最高价判断，T+1 当天不能卖
+            if position > 0 and entry_price > 0 and idx > entry_idx:
+                if result.stop_loss > 0:
+                    stop_price = entry_price * (1 - result.stop_loss)
+                    if low <= stop_price:
+                        # 开盘已跳空低于止损价时按开盘价成交（更差的价格）
+                        _sell(idx, min(stop_price, open_) * (1 - slippage), date_str, "stop_loss")
+                if position > 0 and result.take_profit > 0:
+                    tp_price = entry_price * (1 + result.take_profit)
+                    if high >= tp_price:
+                        _sell(idx, max(tp_price, open_) * (1 - slippage), date_str, "take_profit")
+
+            # 3) 根据当日信号下单
+            if fill_mode == "close":
+                # 旧行为：信号当日收盘价成交（存在前视偏差，仅用于新旧对照）
+                if signal == 1 and position == 0:
+                    _buy(idx, close * (1 + slippage), date_str)
+                elif signal == -1 and position > 0 and idx > entry_idx:
+                    _sell(idx, close * (1 - slippage), date_str, "signal")
             else:
-                exit_reason = "signal"
+                if signal == 1 and position == 0:
+                    pending = {"side": 1, "reason": "signal"}
+                elif signal == -1 and position > 0:
+                    pending = {"side": -1, "reason": "signal"}
 
-            # 执行交易
-            if signal == 1 and position == 0:
-                # 买入
-                available = capital * position_size
-                quantity = int(available / price / 100) * 100  # 按手（100股）取整
-                if quantity >= 100:
-                    cost = quantity * price
-                    commission = max(cost * result.commission_rate, result.min_commission)
-                    total_commission += commission
-                    capital -= (cost + commission)
-                    position = quantity
-                    entry_price = price
-                    entry_date = date_str
-                    entry_idx = idx
-                    buy_commission = commission  # 记录买入手续费
-
-            elif signal == -1 and position > 0:
-                # 卖出
-                revenue = position * price
-                commission = max(revenue * result.commission_rate, result.min_commission)
-                tax = revenue * result.tax_rate
-                total_commission += commission
-                total_tax += tax
-                capital += (revenue - commission - tax)
-
-                # 记录交易
-                profit = (price - entry_price) * position - buy_commission - commission - tax
-                profit_rate = (price - entry_price) / entry_price * 100 if entry_price > 0 else 0
-                holding_days = idx - entry_idx
-
-                trade = TradeRecord(
-                    entry_date=entry_date,
-                    entry_price=entry_price,
-                    exit_date=date_str,
-                    exit_price=price,
-                    quantity=position,
-                    profit=round(profit, 2),
-                    profit_rate=round(profit_rate, 2),
-                    holding_days=holding_days,
-                    exit_reason=exit_reason,
-                )
-                trades.append(trade)
-
-                position = 0
-                entry_price = 0.0
-
-            # 计算当日总权益 (现金 + 持仓市值)
-            equity = capital + position * price
+            # 4) 记录当日权益 (现金 + 持仓市值)
             equity_data.append({
                 "date": row["date"],
-                "close": price,
-                "equity": equity,
+                "close": close,
+                "equity": capital + position * close,
                 "capital": capital,
                 "position": position,
-                "position_value": position * price,
+                "position_value": position * close,
                 "signal": signal,
             })
 

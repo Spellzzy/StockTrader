@@ -60,3 +60,8 @@ def test_env_override_beats_yaml(monkeypatch, tmp_path):
 
 def test_default_llm_model_matches_template():
     assert config_mod.DEFAULT_CONFIG["ai"]["llm"]["model"] == "gpt-4o"
+
+
+def test_default_backtest_fill_mode_is_next_open():
+    """默认必须是无前视偏差的次日开盘成交"""
+    assert config_mod.DEFAULT_CONFIG["backtest"]["fill_mode"] == "next_open"
