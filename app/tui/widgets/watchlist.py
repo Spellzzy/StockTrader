@@ -9,12 +9,13 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
 from textual.message import Message
 from textual.widgets import Static, ListView, ListItem, Label
 from textual.widget import Widget
 
 from rich.text import Text
+
+from app.theme import get_up, get_down
 
 
 class WatchlistSidebar(Widget):
@@ -88,10 +89,10 @@ class WatchlistSidebar(Widget):
 
             # 涨跌颜色
             if change_pct > 0:
-                color = "red"
+                color = get_up()
                 sign = "+"
             elif change_pct < 0:
-                color = "green"
+                color = get_down()
                 sign = ""
             else:
                 color = "dim"

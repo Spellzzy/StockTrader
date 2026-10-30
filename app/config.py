@@ -1,6 +1,5 @@
 """全局配置管理"""
 
-import os
 import yaml
 from pathlib import Path
 
@@ -15,6 +14,7 @@ DEFAULT_CONFIG = {
     "stock_data": {
         "bin_path": "stock-data",
     },
+    "color_scheme": "red_up",  # red_up=红涨绿跌(A股) / green_up=绿涨红跌(美股)
     "market": {
         "default": "A",
     },

@@ -193,7 +193,7 @@ def register_alert_commands(alert_app: typer.Typer, cli_module=None):
                     border_style="red",
                 ))
         else:
-            console.print(f"[green]✅ 所有预警未触发，一切正常[/green]")
+            console.print("[green]✅ 所有预警未触发，一切正常[/green]")
 
     @alert_app.command("history")
     def alert_history_cmd(

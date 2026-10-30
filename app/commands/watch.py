@@ -9,32 +9,47 @@
 
 from datetime import datetime
 from app.commands import console, Table, Panel, box
+from app.theme import get_up, get_down, get_up_bg, get_down_bg
 
 
 # ==================== 辅助格式化 ====================
 
 def _fmt_delta(val: float, suffix: str = "", precision: int = 2) -> str:
-    """格式化差异值：正数绿色↑  负数红色↓  零灰色"""
+    """格式化差异值：正数涨色↑  负数跌色↓  零灰色"""
     if abs(val) < 1e-6:
         return f"[dim]—{suffix}[/dim]"
     fmt = f"{val:+.{precision}f}{suffix}"
+    up, down = get_up(), get_down()
     if val > 0:
-        return f"[green]{fmt} ↑[/green]"
+        return f"[{up}]{fmt} ↑[/{up}]"
     else:
-        return f"[red]{fmt} ↓[/red]"
+        return f"[{down}]{fmt} ↓[/{down}]"
 
 
-def _fmt_vol_delta(cur: float, prev: float) -> str:
-    """格式化成交量增量"""
-    delta = cur - prev
+def _fmt_vol_delta(cur_incr: float, prev_incr: float) -> str:
+    """格式化成交量增量变化（本轮增量 vs 上轮增量，反映成交速率加速/减速）
+    
+    cur_incr: 本轮成交增量（本轮累计 - 上轮累计）
+    prev_incr: 上轮成交增量（上轮累计 - 上上轮累计），0 表示无上轮增量记录
+    """
+    if prev_incr <= 0:
+        # 没有上轮增量记录（首次对比），只显示本轮增量
+        if cur_incr < 1:
+            return "[dim]—[/dim]"
+        d_str = f"{cur_incr / 10000:.1f}万" if cur_incr > 10000 else str(int(cur_incr))
+        return f"[dim]{d_str}[/dim]"
+    # 有上轮增量，对比加速/减速
+    delta = cur_incr - prev_incr
     if abs(delta) < 1:
-        return "[dim]—[/dim]"
+        d_str = f"{cur_incr / 10000:.1f}万" if cur_incr > 10000 else str(int(cur_incr))
+        return f"[dim]{d_str} =[/dim]"
+    pct = delta / prev_incr * 100 if prev_incr else 0
+    d_str = f"{cur_incr / 10000:.1f}万" if cur_incr > 10000 else str(int(cur_incr))
+    up, down = get_up(), get_down()
     if delta > 0:
-        d_str = f"{delta / 10000:.1f}万" if delta > 10000 else str(int(delta))
-        return f"[green]+{d_str} ↑[/green]"
+        return f"[{up}]{d_str} 加速+{pct:.0f}%[/{up}]"
     else:
-        d_str = f"{abs(delta) / 10000:.1f}万" if abs(delta) > 10000 else str(int(abs(delta)))
-        return f"[red]-{d_str} ↓[/red]"
+        return f"[{down}]{d_str} 减速{pct:.0f}%[/{down}]"
 
 
 def _speed_label(price_delta: float, seconds: int) -> str:
@@ -44,7 +59,8 @@ def _speed_label(price_delta: float, seconds: int) -> str:
     speed = abs(price_delta) / (seconds / 60) if seconds > 0 else 0
     if speed >= 1.0:
         tag = "⚡快速" if price_delta > 0 else "⚡急跌"
-        return f" [{('green' if price_delta > 0 else 'red')}]{tag}[/{('green' if price_delta > 0 else 'red')}]"
+        c = get_up() if price_delta > 0 else get_down()
+        return f" [{c}]{tag}[/{c}]"
     elif speed >= 0.3:
         tag = "🔥活跃"
         return f" [yellow]{tag}[/yellow]"
@@ -246,7 +262,7 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                         idx_high = iq.get("high", 0)
                         idx_low = iq.get("low", 0)
 
-                        c = "green" if idx_chg > 0 else "red" if idx_chg < 0 else "dim"
+                        c = get_up() if idx_chg > 0 else get_down() if idx_chg < 0 else "dim"
                         arrow = "▲" if idx_chg > 0 else "▼" if idx_chg < 0 else "—"
 
                         # 格式化成交额
@@ -381,12 +397,12 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
 
                         # ---- 行级着色 ----
                         if chg > 0:
-                            row_style = "on #1a2e1a"  # 淡绿底
-                            color = "green"
+                            row_style = get_up_bg()
+                            color = get_up()
                             _stat_up += 1
                         elif chg < 0:
-                            row_style = "on #2e1a1a"  # 淡红底
-                            color = "red"
+                            row_style = get_down_bg()
+                            color = get_down()
                             _stat_down += 1
                         else:
                             row_style = ""
@@ -456,8 +472,9 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                             limit_down = round(pre_close * (1 - lp), 2)
                             dist_up = (limit_up - cur_price) / cur_price * 100
                             dist_down = (cur_price - limit_down) / cur_price * 100
-                            up_str = f"[green]{dist_up:.2f}%[/green]" if dist_up > 1 else f"[red bold]{dist_up:.2f}%[/red bold]"
-                            dn_str = f"[green]{dist_down:.2f}%[/green]" if dist_down > 1 else f"[red bold]{dist_down:.2f}%[/red bold]"
+                            _safe, _danger = get_up(), get_down()
+                            up_str = f"[{_safe}]{dist_up:.2f}%[/{_safe}]" if dist_up > 1 else f"[{_danger} bold]{dist_up:.2f}%[/{_danger} bold]"
+                            dn_str = f"[{_safe}]{dist_down:.2f}%[/{_safe}]" if dist_down > 1 else f"[{_danger} bold]{dist_down:.2f}%[/{_danger} bold]"
                         else:
                             up_str = "[dim]-[/dim]"
                             dn_str = "[dim]-[/dim]"
@@ -509,8 +526,8 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                             "",
                             "",
                             "",
-                            f"[green]↑{_stat_up}[/green]",
-                            f"[red]↓{_stat_down}[/red]",
+                            f"[{get_up()}]↑{_stat_up}[/{get_up()}]",
+                            f"[{get_down()}]↓{_stat_down}[/{get_down()}]",
                             style="on #1a1a2e",
                         )
 
@@ -530,7 +547,7 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                         diff_table.add_column("价格变动", width=12, justify="right")
                         diff_table.add_column("涨跌幅Δ", width=10, justify="right")
                         diff_table.add_column("振幅Δ", width=10, justify="right")
-                        diff_table.add_column("成交量增量", width=12, justify="right")
+                        diff_table.add_column("成交速率", width=16, justify="right")
                         diff_table.add_column("量比变动", width=10, justify="right")
                         diff_table.add_column("换手率Δ", width=10, justify="right")
                         diff_table.add_column("累计变动", width=12, justify="right")
@@ -565,10 +582,14 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
 
                             cur_vol = q.get("volume", 0)
                             prev_vol = pq.get("volume", 0)
+                            # 本轮成交增量 = 本轮累计 - 上轮累计
+                            cur_vol_incr = cur_vol - prev_vol if prev_vol > 0 else 0
+                            # 上轮成交增量（从 prev_quotes 中获取）
+                            prev_vol_incr = pq.get("_vol_increment", 0)
 
-                            # 量比变动
-                            if prev_vol > 0:
-                                vol_change_pct = (cur_vol - prev_vol) / prev_vol * 100
+                            # 量比变动（基于增量对比）
+                            if prev_vol_incr > 0:
+                                vol_change_pct = (cur_vol_incr - prev_vol_incr) / prev_vol_incr * 100
                             else:
                                 vol_change_pct = 0
 
@@ -587,9 +608,9 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                             if abs(price_delta) < 0.001:
                                 direction = "[dim]横盘[/dim]"
                             elif price_delta > 0:
-                                direction = "[green]📈 上行[/green]"
+                                direction = f"[{get_up()}]📈 上行[/{get_up()}]"
                             else:
-                                direction = "[red]📉 下行[/red]"
+                                direction = f"[{get_down()}]📉 下行[/{get_down()}]"
                             direction += speed
 
                             diff_rows.append({
@@ -598,8 +619,8 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                                 "price_delta": price_delta,
                                 "chg_delta": chg_delta,
                                 "amp_delta": amp_delta,
-                                "cur_vol": cur_vol,
-                                "prev_vol": prev_vol,
+                                "cur_vol_incr": cur_vol_incr,
+                                "prev_vol_incr": prev_vol_incr,
                                 "vol_change_pct": vol_change_pct,
                                 "turnover_delta": turnover_delta,
                                 "cum_delta": cum_delta,
@@ -613,9 +634,9 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                         for rank, row in enumerate(diff_rows, 1):
                             # 行级着色
                             if row["chg_delta"] > 0.001:
-                                d_row_style = "on #1a2e1a"
+                                d_row_style = get_up_bg()
                             elif row["chg_delta"] < -0.001:
-                                d_row_style = "on #2e1a1a"
+                                d_row_style = get_down_bg()
                             else:
                                 d_row_style = ""
 
@@ -624,9 +645,9 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                             if abs(vcp) < 0.01:
                                 vol_pct_str = "[dim]—[/dim]"
                             elif vcp > 0:
-                                vol_pct_str = f"[green]+{vcp:.1f}% ↑[/green]"
+                                vol_pct_str = f"[{get_up()}]+{vcp:.1f}% ↑[/{get_up()}]"
                             else:
-                                vol_pct_str = f"[red]{vcp:.1f}% ↓[/red]"
+                                vol_pct_str = f"[{get_down()}]{vcp:.1f}% ↓[/{get_down()}]"
 
                             diff_table.add_row(
                                 f"[bold]{rank}[/bold]",
@@ -635,7 +656,7 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                                 _fmt_delta(row["price_delta"], "元"),
                                 _fmt_delta(row["chg_delta"], "%"),
                                 _fmt_delta(row["amp_delta"], "%"),
-                                _fmt_vol_delta(row["cur_vol"], row["prev_vol"]),
+                                _fmt_vol_delta(row["cur_vol_incr"], row["prev_vol_incr"]),
                                 vol_pct_str,
                                 _fmt_delta(row["turnover_delta"], "%"),
                                 _fmt_delta(row["cum_delta"], f"({row['cum_pct']:+.2f}%)", precision=2),
@@ -665,7 +686,7 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                             # ① 价格快速异动（单轮涨跌超0.5%）
                             if abs(pct_move) >= 0.5:
                                 tag = "🚀 快速拉升" if pct_move > 0 else "💥 快速下跌"
-                                color = "green" if pct_move > 0 else "red"
+                                color = get_up() if pct_move > 0 else get_down()
                                 movers.append(
                                     f"  [{color}]{tag}[/{color}] "
                                     f"[bold]{name}({code})[/bold] "
@@ -733,6 +754,20 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                                 border_style="yellow",
                                 expand=False,
                             ))
+                            # 推送异动通知
+                            if svc.notifier and svc.notifier.is_enabled:
+                                try:
+                                    from app.services.notification import NotificationLevel
+                                    # 剥离 Rich markup，生成纯文本推送内容
+                                    import re as _re
+                                    _plain = _re.sub(r"\[/?[^\[\]]*\]", "", "\n".join(movers))
+                                    svc.notifier.notify(
+                                        title=f"⚡ 异动捕捉 [{now_str}]（{len(movers)}条）",
+                                        content=_plain,
+                                        level=NotificationLevel.ALERT,
+                                    )
+                                except Exception:
+                                    pass
 
                 # 检测预警（复用已获取的行情数据 + 技术指标跨轮缓存，避免重复请求）
                 _now_ts = time_mod.time()
@@ -779,6 +814,7 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                     )
 
                 # 保存当前轮数据作为下一轮的对比基准（仅个股）
+                _old_prev = prev_quotes  # 保留旧引用，用于计算本轮成交增量
                 prev_quotes = {}
                 for code in stock_codes:
                     qd = quotes_data.get(code, {})
@@ -792,6 +828,11 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                         _pc = qd.get("price", 0) - qd.get("change", 0) if qd.get("price") and qd.get("change") else 0
                     _amp = ((_h - _l) / _pc * 100) if _pc else 0
 
+                    # 计算本轮成交增量，保存为 _vol_increment 供下轮对比速率
+                    _cur_vol = qd.get("volume", 0)
+                    _prev_vol = _old_prev.get(code, {}).get("volume", 0) if _old_prev else 0
+                    _vol_incr = _cur_vol - _prev_vol if _prev_vol > 0 else 0
+
                     prev_quotes[code] = {
                         "price": qd.get("price", 0),
                         "volume": qd.get("volume", 0),
@@ -799,6 +840,7 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                         "name": qd.get("name", ""),
                         "turnover_rate": qd.get("turnover_rate", 0),
                         "_amplitude": _amp,
+                        "_vol_increment": _vol_incr,
                     }
 
             except Exception as e:

@@ -134,7 +134,6 @@ class MLPredictor:
             # 标签映射: -1,0,1 → 0,1,2
             label_map = {-1: 0, 0: 1, 1: 2}
             y_train_xgb = np.array([label_map[v] for v in y_train])
-            y_test_xgb = np.array([label_map[v] for v in y_test])
 
             xgb_model = xgb.XGBClassifier(
                 n_estimators=300,

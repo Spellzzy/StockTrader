@@ -15,7 +15,6 @@
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Optional
 
 import numpy as np
@@ -23,7 +22,7 @@ import pandas as pd
 
 from app.ai.feature_engine import FeatureEngine
 from app.services.market_service import MarketService
-from app.services.strategy import BaseStrategy, get_strategy
+from app.services.strategy import get_strategy
 
 logger = logging.getLogger(__name__)
 

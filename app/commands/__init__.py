@@ -12,3 +12,7 @@ from rich import box
 # 全局共享 console 实例（与 cli.py 中的是同一配置，但各自独立实例）
 # 注意：cli.py 中 console 也是 force_terminal=True，行为一致
 console = Console(force_terminal=True)
+
+# 这些名称是本包对外导出的公共依赖，子模块通过
+# `from app.commands import console, Table, Panel, box` 使用
+__all__ = ["console", "Table", "Panel", "Text", "box"]

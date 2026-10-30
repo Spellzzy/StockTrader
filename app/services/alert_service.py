@@ -1,16 +1,19 @@
 """预警监控服务 - 规则管理 + 条件匹配引擎"""
 
+import logging
 import time
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
 from app.db.database import get_session
 from app.models.alert import Alert, AlertHistory, AlertConditionType
 from app.models.stock import normalize_stock_code
 from app.services.market_service import MarketService
 from app.ai.feature_engine import FeatureEngine
+
+logger = logging.getLogger(__name__)
 
 
 class AlertService:
@@ -394,7 +397,7 @@ class AlertService:
             return {
                 "triggered": triggered,
                 "value": ma_bull,
-                "message": f"均线多头排列! MA5 > MA10 > MA20" if triggered else "",
+                "message": "均线多头排列! MA5 > MA10 > MA20" if triggered else "",
             }
 
         return {"triggered": False, "value": 0, "message": ""}
@@ -570,6 +573,7 @@ class AlertService:
             except KeyboardInterrupt:
                 break
             except Exception as e:
+                logger.warning(f"监控循环异常，本轮跳过: {e}")
                 yield {}, []
 
             time.sleep(interval)

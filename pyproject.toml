@@ -1,0 +1,35 @@
+# 开发工具配置（仅工具段，打包信息仍在 setup.py 中）
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/tui/*",
+    "app/visualization/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["data", "build", "dist", ".venv", "logs"]
+
+[tool.ruff.lint]
+# 起始规则集：只拦真实缺陷（未定义名称、未使用导入/变量）。
+# 随着重构推进再逐步放开 E/I/UP 等规则。
+select = ["F", "E9"]

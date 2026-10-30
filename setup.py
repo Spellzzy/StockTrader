@@ -10,6 +10,9 @@ setup(
     install_requires=[
         "typer>=0.9.0",
         "rich>=13.0.0",
+        "click>=8.1.0",
+        "textual>=0.70.0",
+        "httpx>=0.27.0",
         "sqlalchemy>=2.0.0",
         "pandas>=2.0.0",
         "numpy>=1.24.0",
@@ -22,6 +25,15 @@ setup(
         "xgboost>=2.0.0",
         "joblib>=1.3.0",
     ],
+    extras_require={
+        "dl": ["torch>=2.1.0"],
+        "dev": [
+            "pytest>=7.4.0",
+            "pytest-cov>=4.1.0",
+            "ruff>=0.5.0",
+            "pre-commit>=3.5.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "stock-ai=app.cli:app",

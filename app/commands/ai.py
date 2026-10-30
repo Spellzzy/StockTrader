@@ -29,7 +29,7 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
             result = svc.predict(code, use_dl=dl)
 
         if not result or not result.get("combined"):
-            console.print(f"[red]❌ 预测失败，数据不足或模型异常[/red]")
+            console.print("[red]❌ 预测失败，数据不足或模型异常[/red]")
             return
 
         combined = result["combined"]
@@ -150,7 +150,7 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
         ml = results.get("ml")
         if ml:
             meta = ml.get("meta", {})
-            console.print(f"\n[bold]📊 ML 训练完成[/bold]")
+            console.print("\n[bold]📊 ML 训练完成[/bold]")
             console.print(f"  样本: {meta.get('total_samples', 0)} (训练 {meta.get('train_size', 0)} / 测试 {meta.get('test_size', 0)})")
             console.print(f"  特征数: {meta.get('n_features', 0)}")
 
@@ -166,7 +166,7 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
 
         dl_result = results.get("dl_lstm")
         if dl_result:
-            console.print(f"\n[bold]🧠 DL-LSTM 训练完成[/bold]")
+            console.print("\n[bold]🧠 DL-LSTM 训练完成[/bold]")
             console.print(f"  准确率: {dl_result['accuracy']:.2%}")
             dl_meta = dl_result.get("meta", {})
             console.print(f"  设备: {dl_meta.get('device', 'cpu')}")

@@ -5,6 +5,7 @@
 
 import typer
 from app.commands import console, Table, Panel, box
+from app.theme import get_up, get_down
 
 
 def register_digest_commands(digest_app: typer.Typer, cli_module=None):
@@ -112,7 +113,6 @@ def register_digest_commands(digest_app: typer.Typer, cli_module=None):
     ):
         """生成并推送智能日报（等同于 digest run --push）"""
         from app.services.smart_digest import SmartDigestService
-        from app.services.notification import NotificationLevel
 
         svc = SmartDigestService()
 
@@ -236,9 +236,9 @@ def register_digest_commands(digest_app: typer.Typer, cli_module=None):
         # 汇总
         console.print(
             f"\n[dim]📈 {digest['total']}只自选股: "
-            f"[green]{len(digest['bullish'])}涨[/green] "
+            f"[{get_up()}]{len(digest['bullish'])}涨[/{get_up()}] "
             f"[yellow]{len(digest['neutral'])}平[/yellow] "
-            f"[red]{len(digest['bearish'])}跌[/red] | "
+            f"[{get_down()}]{len(digest['bearish'])}跌[/{get_down()}] | "
             f"使用 [bold]stock-ai digest run --llm[/bold] 获取 LLM 深度分析[/dim]"
         )
 

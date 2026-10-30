@@ -10,6 +10,8 @@
 
 import typer
 
+from app.theme import get_down
+
 
 def register_shortcuts(app: typer.Typer, cli_module):
     """将所有快捷命令注册到 app 上

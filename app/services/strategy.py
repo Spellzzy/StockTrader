@@ -8,10 +8,8 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import pandas as pd
-import numpy as np
 
 
 class BaseStrategy(ABC):

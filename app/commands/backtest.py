@@ -5,6 +5,7 @@
 
 import typer
 from app.commands import console, Table, Panel, box
+from app.theme import get_up, get_down
 
 
 def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
@@ -236,35 +237,35 @@ def _render_backtest_result(result):
         grade = "⭐ 亏损"
 
     lines = [
-        f"[bold]📋 基本信息[/bold]",
+        "[bold]📋 基本信息[/bold]",
         f"  策略: [bold]{result.strategy_name}[/bold] ({result.strategy_desc})",
         f"  区间: {result.start_date} → {result.end_date} ({result.total_days}个交易日)",
         f"  初始资金: {result.initial_capital:,.0f}元  终值: [{ret_color}]{result.final_capital:,.0f}元[/{ret_color}]",
         f"  净利润: [{ret_color}]{result.net_profit:+,.2f}元[/{ret_color}]",
         "",
-        f"[bold]📊 收益指标[/bold]",
+        "[bold]📊 收益指标[/bold]",
         f"  总收益率: [{ret_color}]{result.total_return:+.2f}%[/{ret_color}]  "
         f"年化收益: [{ret_color}]{result.annual_return:+.2f}%[/{ret_color}]",
         f"  基准收益: {result.benchmark_return:+.2f}% (买入持有)",
         f"  超额收益: [{excess_color}]{result.excess_return:+.2f}%[/{excess_color}]",
         "",
-        f"[bold]📉 风险指标[/bold]",
+        "[bold]📉 风险指标[/bold]",
         f"  最大回撤: [red]{result.max_drawdown:.2f}%[/red] ({result.max_drawdown_amount:,.0f}元)",
         f"  夏普比率: [{sharpe_color}]{result.sharpe_ratio:.2f}[/{sharpe_color}]  "
         f"卡玛比率: {result.calmar_ratio:.2f}",
         "",
-        f"[bold]🎯 交易统计[/bold]",
+        "[bold]🎯 交易统计[/bold]",
         f"  总交易: {result.total_trades}笔  "
         f"(盈 {result.win_count} / 亏 {result.loss_count})",
         f"  胜率: [{win_color}]{result.win_rate:.1f}%[/{win_color}]  "
         f"盈亏比: {result.profit_loss_ratio:.2f}",
-        f"  平均盈利: [green]{result.avg_profit:+.2f}%[/green]  "
-        f"平均亏损: [red]{result.avg_loss:+.2f}%[/red]",
-        f"  最大盈利: [green]{result.max_profit:+.2f}%[/green]  "
-        f"最大亏损: [red]{result.max_loss:+.2f}%[/red]",
+        f"  平均盈利: [{get_up()}]{result.avg_profit:+.2f}%[/{get_up()}]  "
+        f"平均亏损: [{get_down()}]{result.avg_loss:+.2f}%[/{get_down()}]",
+        f"  最大盈利: [{get_up()}]{result.max_profit:+.2f}%[/{get_up()}]  "
+        f"最大亏损: [{get_down()}]{result.max_loss:+.2f}%[/{get_down()}]",
         f"  平均持仓: {result.avg_holding_days:.1f}天",
         "",
-        f"[bold]💰 费用[/bold]",
+        "[bold]💰 费用[/bold]",
         f"  手续费: {result.total_commission:,.2f}元  "
         f"印花税: {result.total_tax:,.2f}元  "
         f"合计: {result.total_commission + result.total_tax:,.2f}元",

@@ -33,13 +33,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.text import Text
 from rich import box
 from datetime import datetime
-from typing import Optional
 
 from app.db.database import init_db
-from app.models.stock import normalize_stock_code, normalize_stock_codes
+from app.models.stock import normalize_stock_code
+from app.theme import get_up, get_down, get_color
 
 console = Console(force_terminal=True)
 app = typer.Typer(
@@ -128,7 +127,7 @@ def trade_add(
         trade_time=trade_time,
     )
 
-    action_text = "[red]买入[/red]" if action == "buy" else "[green]卖出[/green]"
+    action_text = f"[{get_up()}]买入[/{get_up()}]" if action == "buy" else f"[{get_down()}]卖出[/{get_down()}]"
     display_name = trade.stock_name or name
     console.print(
         Panel(
@@ -180,10 +179,10 @@ def trade_list(
     table.add_column("理由", width=15)
 
     for t in trades:
-        action_str = "[red]买入[/red]" if t.action == "buy" else "[green]卖出[/green]"
+        action_str = f"[{get_up()}]买入[/{get_up()}]" if t.action == "buy" else f"[{get_down()}]卖出[/{get_down()}]"
         profit_str = ""
         if t.profit is not None:
-            color = "green" if t.profit >= 0 else "red"
+            color = get_color(t.profit)
             profit_str = f"[{color}]{t.profit:+,.2f}[/{color}]"
             if t.profit_rate is not None:
                 profit_str += f"\n[{color}]({t.profit_rate:+.2f}%)[/{color}]"
@@ -459,7 +458,6 @@ def market_quote(
 ):
     """查询实时行情"""
     from app.services.market_service import MarketService
-    import json
 
     svc = MarketService()
     code_list = [normalize_stock_code(c.strip()) for c in codes.split(",")]
@@ -679,12 +677,12 @@ def analysis_summary(
             f"(盈 {s['win_count']} / 亏 {s['loss_count']} / 平 {s['even_count']})\n"
             f"  盈亏比: {s['profit_loss_ratio']}\n"
             f"\n[bold]盈亏统计[/bold]\n"
-            f"  总盈利: [green]{s['total_profit']:+,.2f}[/green]  "
-            f"总亏损: [red]-{s['total_loss']:,.2f}[/red]\n"
-            f"  平均盈利: [green]{s['avg_profit']:+,.2f}[/green]  "
-            f"平均亏损: [red]-{s['avg_loss']:,.2f}[/red]\n"
-            f"  最大单笔盈利: [green]{s['max_profit']:+,.2f}[/green]  "
-            f"最大单笔亏损: [red]-{s['max_loss']:,.2f}[/red]\n"
+            f"  总盈利: [{get_up()}]{s['total_profit']:+,.2f}[/{get_up()}]  "
+            f"总亏损: [{get_down()}]-{s['total_loss']:,.2f}[/{get_down()}]\n"
+            f"  平均盈利: [{get_up()}]{s['avg_profit']:+,.2f}[/{get_up()}]  "
+            f"平均亏损: [{get_down()}]-{s['avg_loss']:,.2f}[/{get_down()}]\n"
+            f"  最大单笔盈利: [{get_up()}]{s['max_profit']:+,.2f}[/{get_up()}]  "
+            f"最大单笔亏损: [{get_down()}]-{s['max_loss']:,.2f}[/{get_down()}]\n"
             f"\n[bold]费用 & 净利润[/bold]\n"
             f"  手续费: {s['total_commission']:,.2f}  印花税: {s['total_tax']:,.2f}\n"
             f"  净利润: [{pnl_color}]{s['net_profit']:+,.2f}[/{pnl_color}]\n"

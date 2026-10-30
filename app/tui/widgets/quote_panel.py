@@ -14,6 +14,8 @@ from textual.widget import Widget
 
 from rich.text import Text
 
+from app.theme import get_color
+
 
 class QuotePanel(Widget):
     """实时行情面板"""
@@ -102,11 +104,7 @@ class QuotePanel(Widget):
 
     @staticmethod
     def _get_color(change_pct: float) -> str:
-        if change_pct > 0:
-            return "red"
-        elif change_pct < 0:
-            return "green"
-        return "dim"
+        return get_color(change_pct)
 
     @staticmethod
     def _styled_num(

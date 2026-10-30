@@ -1,7 +1,7 @@
 """交易记录模型"""
 
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, DateTime, Text, Enum as SAEnum
+from sqlalchemy import String, Float, Integer, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column
 import enum
 

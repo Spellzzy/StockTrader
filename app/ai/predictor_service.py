@@ -39,7 +39,7 @@ class PredictorService:
     def has_dl(self) -> bool:
         """检查 PyTorch 是否可用"""
         try:
-            import torch
+            import torch  # noqa: F401  # 仅用于探测 PyTorch 是否可用
             return True
         except ImportError:
             return False
@@ -244,7 +244,6 @@ class PredictorService:
             return result
 
         if not self.llm.is_configured:
-            from app.ai.llm_analyzer import LLMAnalyzer
             result["error"] = self.llm._get_config_hint()
             return result
 

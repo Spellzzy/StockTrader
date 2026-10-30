@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
 from textual.widgets import Static, DataTable
 from textual.widget import Widget
 

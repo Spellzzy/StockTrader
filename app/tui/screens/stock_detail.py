@@ -9,15 +9,15 @@
 
 from __future__ import annotations
 
-from textual import on
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import Static, TabbedContent, TabPane, RichLog
 from textual.binding import Binding
 
 from rich.text import Text
-from rich.table import Table
+
+from app.theme import get_up, get_down
 
 
 class StockDetailScreen(Screen):
@@ -156,10 +156,10 @@ class StockDetailScreen(Screen):
 
         # 涨跌颜色
         if change_pct > 0:
-            color = "red"
+            color = get_up()
             sign = "+"
         elif change_pct < 0:
-            color = "green"
+            color = get_down()
             sign = ""
         else:
             color = "white"
@@ -241,8 +241,6 @@ class StockDetailScreen(Screen):
         all_highs = df["high"].tolist()
         all_lows = df["low"].tolist()
         all_closes = df["close"].tolist()
-        all_opens = df["open"].tolist()
-        dates = df["date"].tolist()
 
         price_max = max(all_highs)
         price_min = min(all_lows)
@@ -418,7 +416,6 @@ class StockDetailScreen(Screen):
                 for item in flow_data[:10]:
                     if isinstance(item, dict):
                         date = str(item.get("date", ""))[:10]
-                        main_flow = item.get("main_flow", item.get("main_net", 0))
                         line = Text()
                         line.append(f"  {date} ", style="dim")
 

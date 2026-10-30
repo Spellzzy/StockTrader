@@ -1,13 +1,11 @@
 """统计分析服务 - 胜率、盈亏比、最大回撤、夏普比率等"""
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
-from collections import defaultdict
 
 import pandas as pd
-import numpy as np
-from sqlalchemy import select, desc, and_
+from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
 from app.db.database import get_session

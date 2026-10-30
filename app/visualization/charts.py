@@ -1,14 +1,12 @@
 """可视化图表模块 - matplotlib + plotly"""
 
 import os
-from datetime import datetime
-from typing import Optional
-from pathlib import Path
 
 import pandas as pd
 import numpy as np
 
 from app.config import get_config
+from app.theme import get_up_hex, get_down_hex
 
 
 class ChartService:
@@ -62,9 +60,8 @@ class ChartService:
         cum_pnl = daily_pnl["cumulative_pnl"]
 
         # 上图：累计收益曲线
-        colors = ["#ff4444" if v < 0 else "#00c853" for v in cum_pnl]
-        ax1.fill_between(dates, cum_pnl, 0, where=cum_pnl >= 0, alpha=0.3, color="#00c853")
-        ax1.fill_between(dates, cum_pnl, 0, where=cum_pnl < 0, alpha=0.3, color="#ff4444")
+        ax1.fill_between(dates, cum_pnl, 0, where=cum_pnl >= 0, alpha=0.3, color=get_up_hex())
+        ax1.fill_between(dates, cum_pnl, 0, where=cum_pnl < 0, alpha=0.3, color=get_down_hex())
         ax1.plot(dates, cum_pnl, color="#2196F3", linewidth=2)
         ax1.axhline(y=0, color="#888888", linestyle="--", linewidth=0.8)
         ax1.set_title(title, fontsize=16, fontweight="bold")
@@ -74,7 +71,7 @@ class ChartService:
 
         # 下图：每日盈亏柱状图
         daily = daily_pnl["daily_pnl"]
-        bar_colors = ["#00c853" if v >= 0 else "#ff4444" for v in daily]
+        bar_colors = [get_up_hex() if v >= 0 else get_down_hex() for v in daily]
         ax2.bar(dates, daily, color=bar_colors, width=1.0, alpha=0.8)
         ax2.axhline(y=0, color="#888888", linestyle="--", linewidth=0.8)
         ax2.set_ylabel("每日盈亏", fontsize=10)
@@ -117,7 +114,6 @@ class ChartService:
             保存的文件路径
         """
         import matplotlib.pyplot as plt
-        import matplotlib.dates as mdates
         from matplotlib.patches import Rectangle
 
         plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
@@ -182,8 +178,8 @@ class ChartService:
         for i_row, row in df.iterrows():
             idx = list(df.index).index(i_row)
             o, c, h, l = row["open"], row["close"], row["high"], row["low"]
-            # 中国市场：红涨绿跌
-            color = "#00c853" if c >= o else "#ff4444"
+            # 涨跌颜色（跟随配置）
+            color = get_up_hex() if c >= o else get_down_hex()
             if abs(c - o) < 1e-6:
                 color = "#999999"
 
@@ -205,7 +201,6 @@ class ChartService:
                 valid = ma_values.dropna()
                 if valid.empty:
                     continue
-                start_idx = valid.index[0]
                 ma_x = [list(df.index).index(i) for i in valid.index]
                 ax_main.plot(
                     ma_x, valid.values,
@@ -240,7 +235,7 @@ class ChartService:
             ax_main.annotate(
                 f"↓ {df.loc[lo_idx, 'low']:.2f}",
                 xy=(lo_x, df.loc[lo_idx, "low"]),
-                fontsize=8, color="#ff4444", fontweight="bold",
+                fontsize=8, color=get_down_hex(), fontweight="bold",
                 ha="center", va="top",
             )
 
@@ -248,7 +243,7 @@ class ChartService:
         if ax_vol is not None:
             vol = df["volume"].values
             vol_colors = [
-                "#00c853" if df.iloc[i]["close"] >= df.iloc[i]["open"] else "#ff4444"
+                get_up_hex() if df.iloc[i]["close"] >= df.iloc[i]["open"] else get_down_hex()
                 for i in range(len(df))
             ]
             ax_vol.bar(x, vol, color=vol_colors, alpha=0.7, width=0.7)
@@ -265,7 +260,7 @@ class ChartService:
         # ── MACD ──
         if ax_macd is not None and macd_hist is not None:
             # MACD 柱状图
-            hist_colors = ["#00c853" if v >= 0 else "#ff4444" for v in macd_hist]
+            hist_colors = [get_up_hex() if v >= 0 else get_down_hex() for v in macd_hist]
             ax_macd.bar(x, macd_hist, color=hist_colors, alpha=0.6, width=0.7)
             # DIF 和 DEA 线
             ax_macd.plot(x, macd_line, color="#2196F3", linewidth=1.0, label="DIF")
@@ -397,7 +392,7 @@ class ChartService:
             axes[0].pie(
                 [win, loss, even],
                 labels=["盈利", "亏损", "持平"],
-                colors=["#00c853", "#ff4444", "#888888"],
+                colors=[get_up_hex(), get_down_hex(), "#888888"],
                 autopct="%1.1f%%",
                 textprops={"color": "#ffffff" if self.theme == "dark" else "#333333"},
             )
@@ -449,7 +444,6 @@ class ChartService:
             保存的文件路径
         """
         import matplotlib.pyplot as plt
-        import matplotlib.dates as mdates
 
         plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
         plt.rcParams["axes.unicode_minus"] = False
@@ -479,8 +473,8 @@ class ChartService:
 
         # 权益曲线
         ax1.plot(x, equity, color="#2196F3", linewidth=2.0, label="策略权益")
-        ax1.fill_between(x, equity, initial, where=equity >= initial, alpha=0.15, color="#00c853")
-        ax1.fill_between(x, equity, initial, where=equity < initial, alpha=0.15, color="#ff4444")
+        ax1.fill_between(x, equity, initial, where=equity >= initial, alpha=0.15, color=get_up_hex())
+        ax1.fill_between(x, equity, initial, where=equity < initial, alpha=0.15, color=get_down_hex())
         ax1.axhline(y=initial, color="#888888", linestyle=":", linewidth=0.8, alpha=0.5)
 
         # 买卖标记
@@ -493,7 +487,7 @@ class ChartService:
         if sell_mask.any():
             sell_x = [x[i] for i in range(len(x)) if sell_mask.iloc[i]]
             sell_y = [equity[i] for i in range(len(x)) if sell_mask.iloc[i]]
-            ax1.scatter(sell_x, sell_y, marker="v", color="#ff4444", s=80, zorder=5, label="卖出")
+            ax1.scatter(sell_x, sell_y, marker="v", color=get_down_hex(), s=80, zorder=5, label="卖出")
 
         ax1.set_title(title, fontsize=16, fontweight="bold", pad=12)
         ax1.set_ylabel("权益 (元)", fontsize=12)
@@ -507,7 +501,7 @@ class ChartService:
         # 标注最终收益
         final = equity[-1]
         ret_pct = (final - initial) / initial * 100
-        ret_color = "#00c853" if ret_pct >= 0 else "#ff4444"
+        ret_color = get_up_hex() if ret_pct >= 0 else get_down_hex()
         ax1.annotate(
             f"收益: {ret_pct:+.2f}%\n终值: {final:,.0f}",
             xy=(x[-1], final), fontsize=9, color=ret_color, fontweight="bold",

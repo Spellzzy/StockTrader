@@ -48,7 +48,7 @@ class TradesTab(Widget):
                 services.trade.list_trades, limit=30
             )
             self._render(trades)
-        except Exception as e:
+        except Exception:
             pass  # 静默处理
 
     def _render(self, trades: list) -> None:

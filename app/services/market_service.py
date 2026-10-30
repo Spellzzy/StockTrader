@@ -1,7 +1,6 @@
 """行情数据服务 - 封装 stock-data 为业务友好的接口"""
 
 import pandas as pd
-from typing import Optional
 
 from app.data.stock_data_client import StockDataClient
 from app.models.stock import normalize_stock_code

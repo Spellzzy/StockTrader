@@ -12,7 +12,6 @@ import logging
 from typing import Optional, Tuple
 
 import numpy as np
-import pandas as pd
 
 from app.ai.feature_engine import FeatureEngine
 from app.ai.model_manager import ModelManager
