@@ -20,6 +20,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from app.config import get_config
+from app.domain.fees import FeeModel
 from app.ai.feature_engine import FeatureEngine
 from app.services.market_service import MarketService
 from app.services.strategy import get_strategy
@@ -57,6 +59,7 @@ class BacktestResult:
     # 初始参数
     initial_capital: float = 100000.0
     commission_rate: float = 0.0003  # 手续费率 0.03%
+    min_commission: float = 5.0  # 单笔最低手续费
     tax_rate: float = 0.001  # 印花税 0.1% (卖出收取)
     stop_loss: float = 0.0  # 止损比例 (0=不止损)
     take_profit: float = 0.0  # 止盈比例 (0=不止盈)
@@ -119,8 +122,8 @@ class BacktestService:
         days: int = 180,
         period: str = "day",
         initial_capital: float = 100000.0,
-        commission_rate: float = 0.0003,
-        tax_rate: float = 0.001,
+        commission_rate: Optional[float] = None,
+        tax_rate: Optional[float] = None,
         stop_loss: float = 0.0,
         take_profit: float = 0.0,
         position_size: float = 1.0,
@@ -144,12 +147,20 @@ class BacktestService:
         Returns:
             BacktestResult 回测结果
         """
+        # 费率统一走 FeeModel，未显式传参时读取 config.fees
+        fee_model = FeeModel.from_config(get_config())
+        if commission_rate is None:
+            commission_rate = fee_model.commission_rate
+        if tax_rate is None:
+            tax_rate = fee_model.stamp_tax_rate
+
         result = BacktestResult(
             code=code,
             strategy_name=strategy,
             period=period,
             initial_capital=initial_capital,
             commission_rate=commission_rate,
+            min_commission=fee_model.min_commission,
             tax_rate=tax_rate,
             stop_loss=stop_loss,
             take_profit=take_profit,
@@ -247,7 +258,7 @@ class BacktestService:
                 quantity = int(available / price / 100) * 100  # 按手（100股）取整
                 if quantity >= 100:
                     cost = quantity * price
-                    commission = max(cost * result.commission_rate, 5.0)  # 最低5元
+                    commission = max(cost * result.commission_rate, result.min_commission)
                     total_commission += commission
                     capital -= (cost + commission)
                     position = quantity
@@ -259,7 +270,7 @@ class BacktestService:
             elif signal == -1 and position > 0:
                 # 卖出
                 revenue = position * price
-                commission = max(revenue * result.commission_rate, 5.0)
+                commission = max(revenue * result.commission_rate, result.min_commission)
                 tax = revenue * result.tax_rate
                 total_commission += commission
                 total_tax += tax
@@ -304,7 +315,7 @@ class BacktestService:
             price = last_row["close"]
             date_str = last_row["date"].strftime("%Y-%m-%d") if hasattr(last_row["date"], "strftime") else str(last_row["date"])[:10]
             revenue = position * price
-            commission = max(revenue * result.commission_rate, 5.0)
+            commission = max(revenue * result.commission_rate, result.min_commission)
             tax = revenue * result.tax_rate
             total_commission += commission
             total_tax += tax

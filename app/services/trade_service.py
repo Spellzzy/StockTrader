@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import select, desc, and_
 from sqlalchemy.orm import Session
 
+from app.config import get_fee_model
 from app.db.database import get_session
 from app.models.trade import Trade
 from app.models.stock import normalize_stock_code, Stock
@@ -82,13 +83,14 @@ class TradeService:
         # 计算成交金额
         amount = price * quantity
 
-        # A股印花税自动计算（卖出时千分之一）
-        if tax == 0.0 and action == "sell" and market == "A":
-            tax = amount * 0.001
-
-        # A股手续费自动计算（万分之三，最低5元）
-        if commission == 0.0 and market == "A":
-            commission = max(amount * 0.0003, 5.0)
+        # 费率统一走 FeeModel（与回测共用同一套口径）
+        # 用户手动传入的佣金/印花税保持原值，不被覆盖
+        if market == "A":
+            fee_model = get_fee_model()
+            if tax == 0.0:
+                tax = fee_model.tax(amount, action=action, market=market)
+            if commission == 0.0:
+                commission = fee_model.commission(amount, market=market)
 
         trade = Trade(
             stock_code=stock_code,

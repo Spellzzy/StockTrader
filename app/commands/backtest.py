@@ -29,11 +29,12 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
     ):
         """运行回测"""
         from app.services.backtest_service import BacktestService
-        from app.config import get_config
+        from app.config import get_config, get_fee_model
 
         # 从配置读取默认值
         config = get_config()
         bt_cfg = config.get("backtest", {})
+        fee_model = get_fee_model()
 
         # 参数未指定时使用配置默认值
         if capital == 100000 and bt_cfg.get("initial_capital"):
@@ -45,8 +46,9 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
         if position == 1.0 and bt_cfg.get("position_size"):
             position = bt_cfg["position_size"]
 
-        commission_rate = bt_cfg.get("commission_rate", 0.0003)
-        tax_rate = bt_cfg.get("tax_rate", 0.001)
+        # 费率以 config.fees 为准，backtest 段可单独覆盖
+        commission_rate = bt_cfg.get("commission_rate") or fee_model.commission_rate
+        tax_rate = bt_cfg.get("tax_rate") or fee_model.stamp_tax_rate
 
         console.print(f"[cyan]📊 正在回测 {code} | 策略: {strategy} | {days}天 | 资金: {capital:,.0f}元[/cyan]")
         if stop_loss > 0 or take_profit > 0:

@@ -1,6 +1,11 @@
 # Stock Trader AI 配置文件
 # 复制此文件为 config.yaml 并填入你的配置:
 #   cp config.yaml.example config.yaml
+#
+# 密钥推荐用环境变量注入，避免写进 config.yaml（优先级高于本文件）:
+#   STOCK_AI_AI__LLM__API_KEY            → ai.llm.api_key
+#   STOCK_AI_NOTIFICATION__PUSHPLUS__TOKEN → notification.pushplus.token
+# 规则：前缀 STOCK_AI_ + 双下划线分隔层级，段名/键名大小写不敏感。
 
 # 数据库配置
 database:
@@ -15,6 +20,11 @@ stock_data:
 market:
   default: "A"  # A股/港股(HK)/美股(US)
 
+# 涨跌颜色方案
+# "red_up" = 红涨绿跌 (A股惯例)
+# "green_up" = 绿涨红跌 (美股/国际惯例)
+color_scheme: "red_up"
+
 # 数据缓存
 cache:
   enabled: true
@@ -26,6 +36,12 @@ visualization:
   default_backend: "matplotlib"  # matplotlib / plotly
   theme: "dark"  # dark / light
   save_dir: "./data/charts"
+
+# 费率（交易录入与回测共用同一套口径）
+fees:
+  commission_rate: 0.0003    # 佣金费率 (万三)
+  min_commission: 5.0        # 单笔最低佣金 (元)
+  stamp_tax_rate: 0.001      # 印花税率 (千一，仅 A股 卖出收取)
 
 # AI 配置
 ai:
@@ -99,10 +115,55 @@ alerts:
 # 回测引擎配置
 backtest:
   initial_capital: 100000    # 默认初始资金 (元)
-  commission_rate: 0.0003    # 手续费率 (万三)
-  tax_rate: 0.001            # 印花税率 (千一，卖出收取)
+  # commission_rate / tax_rate 留空则沿用上面 fees 段的费率
   stop_loss: 0.0             # 默认止损比例 (0=不止损, 0.05=5%)
   take_profit: 0.0           # 默认止盈比例 (0=不止盈, 0.1=10%)
   position_size: 1.0         # 单次建仓资金比例 (0~1)
   default_days: 180          # 默认回测天数
   default_strategy: "macd_cross"  # 默认策略
+
+# 选股引擎配置
+# 用法: stock-ai sn / stock-ai sn --side sell / stock-ai sn --pool all_a
+screener:
+  # 股票池: watchlist=自选股 / portfolio=持仓 / all_a=全A股 / file:./codes.txt / 逗号分隔代码
+  pool: "watchlist"
+  min_kline: 30              # 单只股票最少 K 线根数（不足则跳过）
+  kline_count: 90            # 用于计算指标的 K 线根数
+  benchmark: "sz399101"      # 行业/大盘基准（sector_strong 条件用）
+  max_workers: 4             # 并发线程数（全A扫描建议 4~8）
+  all_a_cache_days: 7        # 全A代码缓存有效期（天）
+  pool_size_limit: 0         # 池规模上限（0=不限）
+  exclude_delisted: true     # 过滤已退市/长期停牌
+  exclude_st: false          # 过滤 ST/*ST 股
+  max_kline_age_days: 14     # K线最新日期距今超过该天数则跳过
+
+  # ── 买入规则 ──
+  buy:
+    # 聚合模式: all=全部满足 / any=任一满足 / atleast:N=至少N个满足
+    mode: "all"
+    rules:
+      - name: ma_uptrend            # MA20 向上
+        params: { ma: 20, lookback: 5 }
+      - name: price_above_ma        # 股价站上 MA20
+        params: { ma: 20 }
+      - name: volume_expand         # 成交量放大: 当日量 ≥ 5日均量 × 1.5
+        params: { ma_window: 5, ratio: 1.5 }
+      - name: sector_strong         # 行业板块强势: 5日涨幅强于基准
+        params: { window: 5, advantage: 0.0 }
+
+  # ── 卖出规则 ──
+  sell:
+    mode: "any"   # 任一触发即卖
+    rules:
+      - name: price_below_ma        # 跌破 MA10
+        params: { ma: 10 }
+      - name: bearish_volume        # 放量长阴: 跌幅≥3% 且 量比≥1.5
+        params: { drop_pct: 3.0, vol_ratio: 1.5, ma_window: 5 }
+      - name: loss_pct              # 亏损达到 8%
+        params: { threshold: 8.0 }
+
+  # 可用条件（`stock-ai sn --list-conditions` 查看完整说明）：
+  #   ma_uptrend / price_above_ma / price_below_ma / volume_expand
+  #   sector_strong / ma_bull / macd_golden / macd_dead
+  #   rsi_below / rsi_above / breakout / bearish_volume
+  #   loss_pct / profit_pct

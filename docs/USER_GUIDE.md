@@ -550,7 +550,8 @@ stock-ai buy sh600519 1465.75 100 -n "贵州茅台" -r "MACD金叉" -s "技术�
 stock-ai buy sh600519 1400.00 200 -n "贵州茅台" --time "2026-03-15 10:30:00"
 ```
 
-> 手续费和印花税会**自动计算**（手续费万2.5，卖出印花税千1）。
+> 手续费和印花税会**自动计算**（手续费万3、单笔最低 5 元，卖出印花税千1）。
+> 费率可在 `config.yaml` 的 `fees` 段修改，交易录入与回测共用同一套口径。
 
 ---
 
@@ -1128,10 +1129,14 @@ stock-ai bt-compare sh600519 -s "macd_cross,rsi,turtle"
 默认参数可在 `config.yaml` 的 `backtest` 段中修改：
 
 ```yaml
+fees:
+  commission_rate: 0.0003    # 手续费率 (万三)
+  min_commission: 5.0        # 单笔最低手续费 (元)
+  stamp_tax_rate: 0.001      # 印花税率 (千一，A股卖出收取)
+
 backtest:
   initial_capital: 100000    # 默认初始资金 (元)
-  commission_rate: 0.0003    # 手续费率 (万三)
-  tax_rate: 0.001            # 印花税率 (千一，卖出收取)
+  # commission_rate / tax_rate 不填则沿用上面的 fees 段
   stop_loss: 0.0             # 默认止损比例 (0=不止损)
   take_profit: 0.0           # 默认止盈比例 (0=不止盈)
   position_size: 1.0         # 单次建仓资金比例 (0~1)
@@ -1427,7 +1432,7 @@ NotificationManager.notify_alert()
 ### 交易记录说明
 
 - 交易记录为**手动录入**，不自动连接券商
-- 手续费默认按万2.5计算，卖出印花税按千1计算
+- 手续费默认按万3计算（单笔最低 5 元），A股卖出印花税按千1计算
 - 可通过 CSV 批量导入历史交易记录
 
 ---
