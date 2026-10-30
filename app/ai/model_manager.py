@@ -14,7 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Any
 
-from app.config import load_config
+from app.config import get_config
+from app.models.stock import normalize_stock_code, is_index_code
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,28 @@ class ModelManager:
         if base_dir:
             self.base_dir = Path(base_dir)
         else:
-            cfg = load_config()
+            cfg = get_config()
             self.base_dir = Path(cfg.get("ai", {}).get("model", {}).get("save_dir", "./data/models"))
 
         self.ml_dir = self.base_dir / "ml"
         self.dl_dir = self.base_dir / "dl"
         self.ml_dir.mkdir(parents=True, exist_ok=True)
         self.dl_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _require_trainable(code: str) -> str:
+        """规范化代码并拒绝指数
+
+        指数由成分股加权得出，用个股特征训练出来的模型没有意义，
+        历史上因此产生过 sh000001_* 这类无效模型文件。
+        """
+        normalized = normalize_stock_code(code)
+        if is_index_code(normalized):
+            raise ValueError(
+                f"指数不参与模型训练: {code} → {normalized}。"
+                f"如需大盘研判请使用指数本身的行情与指标。"
+            )
+        return normalized
 
     # ==================== ML 模型 ====================
 
@@ -47,6 +63,7 @@ class ModelManager:
         """
         import joblib
 
+        code = self._require_trainable(code)
         date_str = datetime.now().strftime("%Y%m%d")
         filename = f"{code}_{model_type}_{date_str}.joblib"
         path = self.ml_dir / filename
@@ -71,6 +88,10 @@ class ModelManager:
         """
         import joblib
 
+        code = normalize_stock_code(code)
+        if is_index_code(code):
+            return None
+
         # 找到最新的匹配文件
         pattern = f"{code}_{model_type}_"
         candidates = sorted(
@@ -91,6 +112,7 @@ class ModelManager:
         """保存 DL 模型 (PyTorch)"""
         import torch
 
+        code = self._require_trainable(code)
         date_str = datetime.now().strftime("%Y%m%d")
         filename = f"{code}_{model_type}_{date_str}.pt"
         path = self.dl_dir / filename
@@ -110,6 +132,10 @@ class ModelManager:
     def load_dl_model(self, code: str, model_type: str = "lstm") -> Optional[dict]:
         """加载最新的 DL 模型"""
         import torch
+
+        code = normalize_stock_code(code)
+        if is_index_code(code):
+            return None
 
         pattern = f"{code}_{model_type}_"
         candidates = sorted(

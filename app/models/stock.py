@@ -66,6 +66,38 @@ def normalize_stock_code(code: str) -> str:
     return code
 
 
+def is_index_code(code: str) -> bool:
+    """判断是否为指数代码
+
+    指数的走势由成分股加权得出，不适合用个股模型去训练预测，
+    因此模型训练、选股等场景需要先把它们排除掉。
+
+    识别规则（基于规范化后的代码）:
+        sh000xxx → 上证系列指数 (上证指数/沪深300/中证500 等)
+        sz39xxxx → 深证系列指数 (深证成指/创业板指/中证1000 等)
+
+    注意：裸数字代码有歧义（000001 既可能是上证指数，也可能是平安银行），
+    一律先按 normalize_stock_code 的规则归属市场，再判断。
+
+    Args:
+        code: 股票或指数代码（可带前缀，也可只有数字）
+
+    Returns:
+        True 表示是指数
+    """
+    normalized = normalize_stock_code(code)
+
+    if normalized.startswith("sh"):
+        digits = normalized[2:]
+        return digits.isdigit() and digits[:3] == "000"
+
+    if normalized.startswith("sz"):
+        digits = normalized[2:]
+        return digits.isdigit() and digits[:2] == "39"
+
+    return False
+
+
 def normalize_stock_codes(codes_str: str) -> str:
     """批量标准化逗号分隔的股票代码
 
