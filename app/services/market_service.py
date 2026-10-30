@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from app.data.market_cache import KlineCache
 from app.data.stock_data_client import StockDataClient
 from app.models.stock import normalize_stock_code
 
@@ -9,8 +10,10 @@ from app.models.stock import normalize_stock_code
 class MarketService:
     """行情数据服务"""
 
-    def __init__(self):
+    def __init__(self, cache: KlineCache | None = None):
         self.client = StockDataClient()
+        # 缓存缺省从配置读取；显式传 None 以外的值可注入（测试/关闭缓存）
+        self.cache = cache if cache is not None else KlineCache.from_config()
 
     def search(self, keyword: str) -> str:
         """搜索股票"""
@@ -40,6 +43,11 @@ class MarketService:
             包含 date, open, close, high, low, volume, amount, turnover 的 DataFrame
         """
         code = normalize_stock_code(code)
+
+        cached = self.cache.get(code, period, adjust)
+        if cached is not None and len(cached) >= count:
+            return cached.tail(count).reset_index(drop=True)
+
         data = self.client.kline(code, period, count, adjust)
 
         # 解析 data.nodes 结构
@@ -97,6 +105,7 @@ class MarketService:
         if not df.empty and "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
             df = df.sort_values("date").reset_index(drop=True)
+            self.cache.put(df, code, period, adjust)
 
         return df
 

@@ -134,7 +134,7 @@ class PromptBuilder:
 
     def _build_technical_section(self, code: str, prediction_result: Optional[dict] = None) -> str:
         """构建技术面数据"""
-        from app.ai.feature_engine import FeatureEngine
+        from app.domain.indicators import FeatureEngine
 
         lines = ["## 技术面数据"]
 

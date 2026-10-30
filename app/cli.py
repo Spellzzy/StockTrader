@@ -77,7 +77,10 @@ app.add_typer(digest_app, name="digest")
 # ==================== 初始化回调 ====================
 @app.callback()
 def main_callback():
-    """初始化数据库"""
+    """初始化日志与数据库"""
+    from app.logging_setup import setup_logging
+
+    setup_logging()
     init_db()
 
 

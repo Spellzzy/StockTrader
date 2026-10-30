@@ -46,32 +46,23 @@ if sys.platform == "win32":
 
 
 def setup_logging():
-    """配置日志"""
-    log_dir = os.path.join(project_root, "logs")
-    os.makedirs(log_dir, exist_ok=True)
+    """配置日志（统一走 app.logging_setup，密钥自动打码）"""
+    from app.logging_setup import setup_logging as _setup
 
-    log_file = os.path.join(log_dir, f"digest_{datetime.now().strftime('%Y%m%d')}.log")
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler(log_file, encoding="utf-8"),
-            logging.StreamHandler(),
-        ],
-    )
+    log_file = f"digest_{datetime.now().strftime('%Y%m%d')}.log"
+    _setup(level="INFO", log_dir=os.path.join(project_root, "logs"), log_file=log_file)
     return logging.getLogger("scheduled_digest")
 
 
 def is_trading_day() -> bool:
-    """简单判断是否为交易日（周一~周五，不含节假日）
+    """是否为交易日
 
-    注意：此处仅做工作日判断，如需精确的 A 股交易日历，
-    建议使用 exchange_calendars 库或自行维护节假日表。
+    走 domain/calendar：周末 + config.yaml 里 market.holidays / market.workdays。
+    法定节假日需要人工维护（交易所每年公告）。
     """
-    today = datetime.now()
-    # 周一=0 ... 周日=6
-    return today.weekday() < 5
+    from app.domain.calendar import get_calendar
+
+    return get_calendar().is_trading_day()
 
 
 def main():

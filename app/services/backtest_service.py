@@ -22,7 +22,7 @@ import pandas as pd
 
 from app.config import get_config
 from app.domain.fees import FeeModel
-from app.ai.feature_engine import FeatureEngine
+from app.domain.indicators import FeatureEngine
 from app.services.market_service import MarketService
 from app.services.strategy import get_strategy
 

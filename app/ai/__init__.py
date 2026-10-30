@@ -4,7 +4,6 @@ Phase 1/2: ML/DL 预测模型
 Phase 3:   LLM 分析总结
 
 模块结构:
-    feature_engine.py    — 技术指标特征工程
     ml_predictor.py      — ML 预测 (RandomForest + XGBoost)
     dl_predictor.py      — DL 预测 (LSTM + Transformer)
     model_manager.py     — 模型保存/加载/版本管理
@@ -13,7 +12,7 @@ Phase 3:   LLM 分析总结
     llm_analyzer.py      — LLM 分析引擎(多后端支持)
 """
 
-from app.ai.feature_engine import FeatureEngine
+from app.domain.indicators import FeatureEngine  # 已下沉到领域层，此处仅做兼容导出
 from app.ai.ml_predictor import MLPredictor
 from app.ai.model_manager import ModelManager
 from app.ai.predictor_service import PredictorService

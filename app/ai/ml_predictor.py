@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from app.ai.feature_engine import FeatureEngine
+from app.domain.indicators import FeatureEngine
 from app.ai.model_manager import ModelManager
 from app.ai.split import time_split_indices
 from app.services.market_service import MarketService

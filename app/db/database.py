@@ -1,7 +1,10 @@
 """数据库连接管理"""
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -40,6 +43,25 @@ def get_session() -> Session:
     """获取一个新的数据库会话"""
     factory = get_session_factory()
     return factory()
+
+
+@contextmanager
+def session_scope() -> Iterator[Session]:
+    """会话作用域：自动提交 / 回滚 / 关闭
+
+    Usage:
+        with session_scope() as session:
+            session.add(obj)
+    """
+    session = get_session()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def ensure_alert_cooldown_column(engine=None):

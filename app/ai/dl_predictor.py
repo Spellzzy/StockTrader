@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from app.ai.feature_engine import FeatureEngine
+from app.domain.indicators import FeatureEngine
 from app.ai.model_manager import ModelManager
 from app.ai.split import fit_scaler_on_train, time_split_indices
 from app.services.market_service import MarketService

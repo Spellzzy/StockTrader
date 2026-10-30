@@ -12,7 +12,7 @@ from app.db.database import get_session
 from app.models.alert import Alert, AlertHistory, AlertConditionType
 from app.models.stock import normalize_stock_code
 from app.services.market_service import MarketService
-from app.ai.feature_engine import FeatureEngine
+from app.domain.indicators import FeatureEngine
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +258,7 @@ class AlertService:
 
             except Exception as e:
                 if verbose:
-                    print(f"  ⚠️ {stock_code} 检测异常: {e}")
+                    logger.warning(f"{stock_code} 检测异常: {e}")
 
         return triggered_list
 

@@ -83,6 +83,9 @@ class StockTraderDashboard(App):
 def run_dashboard(refresh_interval: float = 30.0) -> None:
     """启动 Dashboard（供 CLI 调用）"""
     from app.db.database import init_db
+    from app.logging_setup import setup_logging
+
+    setup_logging()
     init_db()
     dashboard = StockTraderDashboard(refresh_interval=refresh_interval)
     dashboard.run()

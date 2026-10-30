@@ -27,7 +27,7 @@ from typing import Callable, Optional
 
 import pandas as pd
 
-from app.ai.feature_engine import FeatureEngine
+from app.domain.indicators import FeatureEngine
 from app.services.market_service import MarketService
 
 
