@@ -147,6 +147,10 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
             0, "--walk-forward", "-wf",
             help="额外做 N 折滚动窗口验证（更接近真实滚动预测的表现）",
         ),
+        dl_arch: str = typer.Option(
+            "lstm", "--arch",
+            help="DL 网络结构: lstm / transformer / both（需配合 --dl）",
+        ),
     ):
         """训练 AI 预测模型"""
         from app.ai.predictor_service import PredictorService
@@ -172,7 +176,7 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
 
         console.print(f"[cyan]🏋️ 开始训练 {code} 的预测模型...[/cyan]")
         svc = PredictorService()
-        results = svc.train(code, use_dl=dl)
+        results = svc.train(code, use_dl=dl, dl_arch=dl_arch)
 
         if not results:
             console.print("[red]❌ 训练失败[/red]")
@@ -195,9 +199,15 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
                     c = "green" if acc > 0.5 else "yellow" if acc > 0.4 else "red"
                     console.print(f"  {model_name}: [{c}]准确率 {acc:.2%}[/{c}]")
 
-        dl_result = results.get("dl_lstm")
-        if dl_result:
-            console.print("\n[bold]🧠 DL-LSTM 训练完成[/bold]")
+        for key, label in [("dl_lstm", "DL-LSTM"), ("dl_transformer", "DL-Transformer")]:
+            dl_result = results.get(key)
+            if not dl_result:
+                continue
+            if isinstance(dl_result, dict) and dl_result.get("error"):
+                console.print(f"\n[yellow]⚠️ {label}: {dl_result['error']}[/yellow]")
+                continue
+
+            console.print(f"\n[bold]🧠 {label} 训练完成[/bold]")
             console.print(f"  准确率: {dl_result['accuracy']:.2%}")
             dl_meta = dl_result.get("meta", {})
             console.print(f"  设备: {dl_meta.get('device', 'cpu')}")

@@ -22,6 +22,9 @@ data/stock_trader.db
 data/stock_trader.db-journal
 data/stock_trader.db-wal
 
+# 模拟盘账户（本地数据）
+data/paper_account.json
+
 # 训练好的 ML/DL 模型（二进制大文件）
 data/models/ml/*.joblib
 data/models/dl/*.pt

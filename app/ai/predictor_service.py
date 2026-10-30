@@ -62,12 +62,13 @@ class PredictorService:
 
     # ==================== 训练 ====================
 
-    def train(self, code: str, use_dl: bool = False) -> dict:
+    def train(self, code: str, use_dl: bool = False, dl_arch: str = "lstm") -> dict:
         """训练 ML（和可选的 DL）模型
 
         Args:
             code: 股票代码
             use_dl: 是否同时训练 DL 模型
+            dl_arch: DL 网络结构，lstm / transformer / both
 
         Returns:
             训练结果汇总
@@ -84,9 +85,10 @@ class PredictorService:
             if not self.has_dl:
                 results["dl"] = {"error": "PyTorch 未安装，跳过 DL 训练"}
             else:
-                logger.info(f"开始训练 DL-LSTM 模型: {code}")
-                dl_result = self.dl.train(code, model_type="lstm")
-                results["dl_lstm"] = dl_result
+                archs = ["lstm", "transformer"] if dl_arch == "both" else [dl_arch]
+                for arch in archs:
+                    logger.info(f"开始训练 DL-{arch} 模型: {code}")
+                    results[f"dl_{arch}"] = self.dl.train(code, model_type=arch)
 
         return results
 

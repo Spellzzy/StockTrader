@@ -244,6 +244,34 @@ class NotificationManager:
             change_percent=quote.get("change_percent"),
         )
 
+    def notify_trade(
+        self,
+        trade,
+        level: NotificationLevel = NotificationLevel.INFO,
+    ) -> List[Tuple[str, bool, str]]:
+        """交易成交时的快捷通知（config.notification.on_trade 打开后生效）
+
+        Args:
+            trade: Trade 对象
+            level: 通知级别
+
+        Returns:
+            发送结果列表
+        """
+        action = "买入" if getattr(trade, "action", "") == "buy" else "卖出"
+        return self.notify(
+            title=f"交易记录 — {action} {trade.stock_name or trade.stock_code}",
+            content=(
+                f"{action} {trade.stock_code} {trade.stock_name or ''}\n"
+                f"价格 {trade.price}  数量 {trade.quantity}  金额 {trade.amount:,.2f}\n"
+                f"手续费 {trade.commission or 0:.2f}  印花税 {trade.tax or 0:.2f}"
+            ),
+            level=level,
+            stock_code=getattr(trade, "stock_code", ""),
+            stock_name=getattr(trade, "stock_name", "") or "",
+            price=getattr(trade, "price", None),
+        )
+
     def get_status(self) -> dict:
         """获取通知系统状态"""
         channels_config = self._config.get("channels", {})

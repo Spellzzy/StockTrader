@@ -2,6 +2,7 @@
 
 import csv
 import io
+import logging
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
@@ -13,6 +14,8 @@ from app.config import get_fee_model
 from app.db.database import get_session
 from app.models.trade import Trade
 from app.models.stock import normalize_stock_code, Stock
+
+logger = logging.getLogger(__name__)
 
 
 class TradeService:
@@ -116,7 +119,32 @@ class TradeService:
         self.session.add(trade)
         self.session.commit()
         self.session.refresh(trade)
+
+        self._notify_trade(trade)
         return trade
+
+    @staticmethod
+    def _notify_trade(trade: Trade):
+        """交易成交推送（config.notification.on_trade 开启后才推送）
+
+        推送失败不能影响交易记录本身，因此这里吞掉异常只记日志。
+        """
+        try:
+            from app.config import get_config
+
+            notification_cfg = get_config().get("notification", {}) or {}
+            if not notification_cfg.get("enabled", True):
+                return
+            if not notification_cfg.get("on_trade", False):
+                return
+
+            from app.services.notification import NotificationManager
+
+            manager = NotificationManager()
+            if manager.is_enabled:
+                manager.notify_trade(trade)
+        except Exception as e:
+            logger.warning(f"交易推送失败（不影响记录）: {e}")
 
     def _calc_sell_profit(self, sell_trade: Trade):
         """计算卖出盈亏（基于平均成本法）"""

@@ -59,6 +59,7 @@ alert_app = typer.Typer(help="预警监控管理", no_args_is_help=True, hidden=
 backtest_app = typer.Typer(help="回测引擎", no_args_is_help=True, hidden=True)
 notify_app = typer.Typer(help="消息推送管理", no_args_is_help=True, hidden=True)
 digest_app = typer.Typer(help="智能日报（AI 盯盘助手）", no_args_is_help=True, hidden=True)
+paper_app = typer.Typer(help="模拟盘（不涉真实资金）", no_args_is_help=True, hidden=True)
 
 app.add_typer(trade_app, name="trade")
 app.add_typer(portfolio_app, name="portfolio")
@@ -71,6 +72,7 @@ app.add_typer(alert_app, name="alert")
 app.add_typer(backtest_app, name="backtest")
 app.add_typer(notify_app, name="notify")
 app.add_typer(digest_app, name="digest")
+app.add_typer(paper_app, name="paper")
 
 
 
@@ -1041,6 +1043,12 @@ def init():
     console.print("  数据库已创建")
     console.print("  数据目录已就绪")
     console.print("\n使用 [bold]stock-ai --help[/bold] 查看所有命令")
+
+
+# ==================== 模拟盘（从 commands/paper.py 加载）====================
+from app.commands.paper import register_paper_commands
+
+register_paper_commands(paper_app, registry)
 
 
 # ==================== 注册快捷命令（从 commands/shortcuts.py 加载）====================
