@@ -164,6 +164,11 @@ class BacktestService:
         if slippage is None:
             slippage = float(bt_cfg.get("slippage", 0.0))
 
+        if fill_mode not in ("next_open", "close"):
+            raise ValueError(f"未知的成交方式: {fill_mode}（可选 next_open / close）")
+        if slippage < 0:
+            raise ValueError(f"滑点不能为负: {slippage}")
+
         result = BacktestResult(
             code=code,
             strategy_name=strategy,
@@ -321,7 +326,9 @@ class BacktestService:
             high = float(row["high"]) if has_ohlc else close
             low = float(row["low"]) if has_ohlc else close
             prev_close = float(df.iloc[idx - 1]["close"]) if idx > 0 else close
-            signal = int(row.get("signal", 0) or 0)
+
+            raw_signal = row.get("signal", 0)
+            signal = int(raw_signal) if pd.notna(raw_signal) else 0
 
             # 1) 执行上一根 K 线的挂单：次日开盘成交
             if pending is not None:

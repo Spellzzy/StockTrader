@@ -182,6 +182,15 @@ def test_limit_down_bar_blocks_sell(limit_kline_df):
     assert result.trades[0].exit_reason == "end"
 
 
+def test_run_rejects_unknown_fill_mode(monkeypatch):
+    """非法的成交方式必须显式报错，而不是被静默当成 next_open"""
+    svc = BacktestService()
+    monkeypatch.setattr(svc.market, "get_kline_df", lambda *a, **k: pd.DataFrame())
+
+    with pytest.raises(ValueError):
+        svc.run("sh600519", fill_mode="tomorrow")
+
+
 def test_next_open_is_stricter_than_close_fill():
     """消除前视偏差后，同一组信号的收益不应高于旧口径"""
     df = _df([0, 1, 0, -1, 0, 1, 0, -1, 0], [10.5, 10.5, 11.0, 12.0, 12.0, 11.5, 10.5, 10.0, 10.0])

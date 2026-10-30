@@ -4,7 +4,7 @@
 """
 
 import typer
-from app.commands import console, Table, Panel, box
+from app.commands import console, Table, Panel, box, as_bool, as_int
 
 
 def register_ai_commands(ai_app: typer.Typer, cli_module=None):
@@ -25,12 +25,19 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
         """AI 预测股票走势"""
         from app.ai.predictor_service import PredictorService
 
+        # 被其它命令直接调用时，未传参的 Option 默认值是 OptionInfo（真值），需兜底
+        auto_train = as_bool(auto_train)
+
         with console.status(f"[cyan]🔮 正在分析 {code} ...[/cyan]"):
             svc = PredictorService()
             result = svc.predict(code, use_dl=dl, auto_train=auto_train)
 
+        if result and result.get("error"):
+            console.print(f"[red]❌ {result['error']}[/red]")
+            return
+
         if not result or not result.get("combined"):
-            console.print(f"[red]❌ {result.get('error') if result else '预测失败'}[/red]")
+            console.print("[red]❌ 预测失败，数据不足或模型异常[/red]")
             return
 
         combined = result["combined"]
@@ -143,6 +150,9 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
     ):
         """训练 AI 预测模型"""
         from app.ai.predictor_service import PredictorService
+
+        # 同 ai_predict：直接调用时 Option 默认值是 OptionInfo，需兜底
+        walk_forward = as_int(walk_forward)
 
         if walk_forward > 0:
             from app.ai.ml_predictor import MLPredictor

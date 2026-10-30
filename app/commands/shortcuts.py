@@ -536,12 +536,18 @@ def register_shortcuts(app: typer.Typer, cli_module):
         stop_loss: float = typer.Option(0.0, "--stop-loss", "--sl", help="止损比例 (0.05=5%)"),
         take_profit: float = typer.Option(0.0, "--take-profit", "--tp", help="止盈比例 (0.1=10%)"),
         position: float = typer.Option(1.0, "--position", help="仓位比例 (0~1)"),
+        fill: str = typer.Option(
+            "next_open", "--fill",
+            help="成交方式: next_open=信号次日开盘成交 / close=信号当日收盘成交(含前视偏差)",
+        ),
+        slippage: float = typer.Option(0.0, "--slippage", help="滑点比例 (0.001=0.1%)"),
         chart: bool = typer.Option(False, "--chart", "-g", help="显示回测图表"),
     ):
         """运行回测"""
         cli_module.backtest_run(
             code=code, strategy=strategy, days=days, capital=capital,
-            stop_loss=stop_loss, take_profit=take_profit, position=position, chart=chart,
+            stop_loss=stop_loss, take_profit=take_profit, position=position,
+            fill=fill, slippage=slippage, chart=chart,
         )
 
     @app.command("bt-list", help="查看可用回测策略")
