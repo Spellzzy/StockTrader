@@ -64,8 +64,9 @@
 | 模拟盘 | ✅ | `app/services/paper_broker.py` + `stock-ai paper buy/sell/show/orders/reset` |
 | 交易成交推送 `on_trade` | ✅ | `NotificationManager.notify_trade`，`config.notification.on_trade` 开启后生效 |
 | Transformer 接入命令行 | ✅ | `train-ai --dl --arch transformer / both` |
-| 多标的组合回测与参数寻优 | ⬜ 未做 | 下一步 |
-| 选股结果直接送回测 | ⬜ 未做 | 下一步 |
+| 多标的组合回测 | ✅ | `BacktestService.run_portfolio` + `stock-ai bt-pf <codes>`（等权分配，合并权益曲线） |
+| 选股结果直接送回测 | ✅ | `stock-ai sn --backtest`（对买入命中做组合回测） |
+| 参数寻优（网格搜索） | ⬜ 未做 | 下一步 |
 | 券商接口 | ⬜ 不在计划内 | 仅预留 `Broker` 抽象，模拟盘稳定后再评估 |
 
 ---
