@@ -886,25 +886,36 @@ def chart_monthly():
 
 
 
+# ==================== 命令注册表 ====================
+# 以前各命令模块会把函数挂回 cli 模块自身（模块自引用），
+# 形成隐式循环依赖且依赖注册顺序。改为显式的注册表对象：
+# 各 register_* 把命令函数写进 registry，shortcuts 再从 registry 取用。
+from types import SimpleNamespace
+
+registry = SimpleNamespace()
+
 # ==================== AI 预测（从 commands/ai.py 加载）====================
-import app.cli as _self_module
 from app.commands.ai import register_ai_commands
-register_ai_commands(ai_app, _self_module)
+
+register_ai_commands(ai_app, registry)
 
 
 # ==================== 回测引擎（从 commands/backtest.py 加载）====================
 from app.commands.backtest import register_backtest_commands
-register_backtest_commands(backtest_app, _self_module)
+
+register_backtest_commands(backtest_app, registry)
 
 
 # ==================== 预警监控（从 commands/alert.py 加载）====================
 from app.commands.alert import register_alert_commands
-register_alert_commands(alert_app, _self_module)
+
+register_alert_commands(alert_app, registry)
 
 
 # ==================== 智能日报（从 commands/digest.py 加载）====================
 from app.commands.digest import register_digest_commands
-register_digest_commands(digest_app, _self_module)
+
+register_digest_commands(digest_app, registry)
 
 
 # ==================== 消息推送命令 ====================
@@ -1033,8 +1044,24 @@ def init():
 
 
 # ==================== 注册快捷命令（从 commands/shortcuts.py 加载）====================
+
+# cli.py 自身定义的命令也要放进注册表，供 shortcuts 复用。
+# tests/test_command_registry.py 会校验这里没有漏项。
+for _name in (
+    "_notify_list_impl", "_notify_test_impl", "_parse_time",
+    "analysis_summary", "analysis_monthly", "analysis_ranking", "analysis_drawdown",
+    "chart_pnl", "chart_kline", "chart_portfolio", "chart_winloss", "chart_monthly",
+    "market_search", "market_quote", "market_kline", "market_finance",
+    "market_profile", "market_fund", "market_news", "market_chip",
+    "portfolio_show", "portfolio_rebuild",
+    "trade_list", "trade_delete",
+    "watchlist_list", "watchlist_add", "watchlist_remove",
+):
+    setattr(registry, _name, globals()[_name])
+
 from app.commands.shortcuts import register_shortcuts
-register_shortcuts(app, _self_module)
+
+register_shortcuts(app, registry)
 
 
 if __name__ == "__main__":
