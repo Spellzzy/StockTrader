@@ -1508,6 +1508,24 @@ stock-ai quote sh600519,sz000858,hk00700
 stock-ai summary --start 2026-01-01 --end 2026-03-31
 ```
 
+### Q: 数据库结构变了怎么升级？
+
+项目已接入 Alembic 迁移（开发依赖 `pip install -r requirements-dev.txt`）：
+
+```bash
+alembic upgrade head      # 升级到最新结构
+alembic current           # 查看当前版本
+alembic revision --autogenerate -m "说明"   # 模型改了之后生成迁移
+```
+
+**已经存在的数据库**需要先标记为最新（否则会重复建表报错）：
+
+```bash
+alembic stamp head
+```
+
+日常使用不需要手动跑迁移，CLI 启动时的 `init_db()` 仍会建表并补齐新增列。
+
 ### Q: 配置文件在哪里修改？
 
 项目根目录的 `config.yaml`，可调整数据库路径、手续费率、图表样式等。

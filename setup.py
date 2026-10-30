@@ -32,6 +32,7 @@ setup(
             "pytest-cov>=4.1.0",
             "ruff>=0.5.0",
             "pre-commit>=3.5.0",
+            "alembic>=1.13.0",
         ],
     },
     entry_points={
