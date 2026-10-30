@@ -9,13 +9,14 @@
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from app.ai.feature_engine import FeatureEngine
 from app.ai.model_manager import ModelManager
+from app.ai.split import time_split_indices
 from app.services.market_service import MarketService
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,104 @@ class MLPredictor:
         df = self.feature_engine.add_label_classification(df, horizon=horizon, threshold=threshold)
         return df
 
+    @staticmethod
+    def _window_dates(df: pd.DataFrame, window: slice) -> Tuple[Optional[str], Optional[str]]:
+        """取某个切片的起止日期（用于记录训练区间）"""
+        if "date" not in df.columns:
+            return None, None
+        dates = df["date"].iloc[window]
+        if len(dates) == 0:
+            return None, None
+        return str(dates.iloc[0])[:10], str(dates.iloc[-1])[:10]
+
+    @staticmethod
+    def _expiry_timestamp() -> str:
+        """按配置计算模型过期时间"""
+        from datetime import datetime, timedelta
+
+        from app.config import get_config
+
+        days = int(get_config().get("ai", {}).get("model", {}).get("expire_days", 30))
+        return (datetime.now() + timedelta(days=days)).isoformat()
+
+    def walk_forward(
+        self,
+        code: str,
+        n_splits: int = 3,
+        count: int = 800,
+        horizon: int = 5,
+        threshold: float = 2.0,
+        model_type: str = "rf",
+        n_estimators: int = 100,
+    ) -> Optional[dict]:
+        """滚动窗口验证（walk-forward）
+
+        按时间顺序把数据切成 n_splits+1 段，第 k 段用前 k 段训练、第 k+1 段测试，
+        比一次性切分更能反映模型在真实滚动预测中的表现。
+
+        Returns:
+            {"code", "model_type", "folds": [...], "mean_accuracy"}
+        """
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.metrics import accuracy_score
+
+        df = self._prepare_data(code, count, horizon, threshold)
+        if df is None:
+            return None
+
+        feature_cols = self.feature_engine.get_feature_columns(df)
+        X = df[feature_cols].values
+        y = df["label"].values
+
+        n = len(X)
+        fold_size = n // (n_splits + 1)
+        if fold_size < 20:
+            logger.warning(f"数据量不足以做 {n_splits} 折滚动验证: 仅 {n} 条")
+            return None
+
+        folds = []
+        for k in range(1, n_splits + 1):
+            train_end = fold_size * k
+            test_end = min(fold_size * (k + 1), n)
+
+            # 同样要留出标签 horizon 的间隔
+            train_stop = train_end - horizon
+            test_start = train_end + horizon
+            if train_stop <= 0 or test_start >= test_end:
+                continue
+
+            X_train, y_train = X[:train_stop], y[:train_stop]
+            X_test, y_test = X[test_start:test_end], y[test_start:test_end]
+
+            model = RandomForestClassifier(
+                n_estimators=n_estimators,
+                max_depth=10,
+                min_samples_split=10,
+                min_samples_leaf=5,
+                random_state=42,
+                n_jobs=-1,
+            )
+            model.fit(X_train, y_train)
+            acc = float(accuracy_score(y_test, model.predict(X_test)))
+
+            folds.append({
+                "fold": k,
+                "train_size": len(X_train),
+                "test_size": len(X_test),
+                "accuracy": round(acc, 4),
+            })
+
+        if not folds:
+            return None
+
+        return {
+            "code": code,
+            "model_type": model_type,
+            "horizon": horizon,
+            "folds": folds,
+            "mean_accuracy": round(sum(f["accuracy"] for f in folds) / len(folds), 4),
+        }
+
     def train(
         self,
         code: str,
@@ -93,10 +192,19 @@ class MLPredictor:
         X = df[feature_cols].values
         y = df["label"].values
 
-        # 时序切分（不能随机！）
-        split_idx = int(len(X) * (1 - test_ratio))
-        X_train, X_test = X[:split_idx], X[split_idx:]
-        y_train, y_test = y[:split_idx], y[split_idx:]
+        # 时序切分（不能随机！），切分点两侧留出 horizon 的间隔
+        train_slice, test_slice = time_split_indices(len(X), test_ratio, gap=horizon)
+        X_train, X_test = X[train_slice], X[test_slice]
+        y_train, y_test = y[train_slice], y[test_slice]
+
+        train_start, train_end = self._window_dates(df, train_slice)
+        expires_at = self._expiry_timestamp()
+
+        window_meta = {
+            "train_start": train_start,
+            "train_end": train_end,
+            "expires_at": expires_at,
+        }
 
         results = {}
 
@@ -121,6 +229,7 @@ class MLPredictor:
             "features": feature_cols,
             "train_size": len(X_train),
             "test_size": len(X_test),
+            **window_meta,
         })
 
         results["rf"] = {
@@ -162,6 +271,7 @@ class MLPredictor:
                 "label_map": label_map,
                 "train_size": len(X_train),
                 "test_size": len(X_test),
+                **window_meta,
             })
 
             results["xgb"] = {
@@ -187,20 +297,34 @@ class MLPredictor:
 
         return results
 
-    def predict(self, code: str, model_type: str = "xgb") -> Optional[dict]:
+    def predict(
+        self,
+        code: str,
+        model_type: str = "xgb",
+        auto_train: bool = False,
+    ) -> Optional[dict]:
         """用已训练模型预测最新状态
 
         Args:
             code: 股票代码
             model_type: 使用的模型 (rf / xgb)
+            auto_train: 缺模型时是否自动训练。默认 False —— 批量扫描时
+                        隐式训练会让耗时从秒级变成分钟级，且结果不可控。
 
         Returns:
-            预测结果 dict
+            预测结果 dict；缺模型且不允许自动训练时返回 None
         """
         # 加载模型
         payload = self.model_manager.load_ml_model(code, model_type)
         if payload is None:
-            logger.warning(f"未找到 {code} 的 {model_type} 模型，将自动训练...")
+            if not auto_train:
+                logger.warning(
+                    f"未找到 {code} 的 {model_type} 模型，请先执行 train-ai 训练；"
+                    f"或在调用时显式指定 auto_train=True"
+                )
+                return None
+
+            logger.info(f"未找到 {code} 的 {model_type} 模型，开始训练...")
             train_result = self.train(code)
             if train_result is None:
                 return None

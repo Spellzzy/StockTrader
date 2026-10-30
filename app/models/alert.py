@@ -1,6 +1,7 @@
 """预警规则模型"""
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 from sqlalchemy import String, Float, Integer, DateTime, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 import enum
@@ -49,6 +50,9 @@ class Alert(Base):
 
     # 设置
     repeat: Mapped[bool] = mapped_column(Boolean, default=False, comment="触发后是否继续监控(可重复触发)")
+    cooldown_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=True, comment="重复触发的冷却分钟数 (留空则用配置默认值)"
+    )
     note: Mapped[str] = mapped_column(Text, nullable=True, comment="备注")
 
     # 元数据
@@ -67,6 +71,26 @@ class Alert(Base):
         if self.is_triggered and not self.repeat:
             return "已触发"
         return "监控中"
+
+    def in_cooldown(self, now: Optional[datetime] = None, default_minutes: int = 0) -> bool:
+        """是否处于冷却期内（可重复触发的预警不会每轮都推送）
+
+        Args:
+            now: 当前时间，默认取系统时间
+            default_minutes: 未设置 cooldown_minutes 时使用的默认值
+
+        Returns:
+            True 表示本轮应跳过
+        """
+        if self.last_triggered_at is None:
+            return False
+
+        minutes = self.cooldown_minutes if self.cooldown_minutes is not None else default_minutes
+        if minutes <= 0:
+            return False
+
+        current = now or datetime.now()
+        return current < self.last_triggered_at + timedelta(minutes=minutes)
 
 
 class AlertHistory(Base):

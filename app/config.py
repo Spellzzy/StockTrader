@@ -54,6 +54,9 @@ DEFAULT_CONFIG = {
         "fill_mode": "next_open",    # next_open=信号次日开盘成交 / close=信号当日收盘成交(含前视偏差)
         "slippage": 0.0,             # 滑点比例
     },
+    "alerts": {
+        "cooldown_minutes": 30,      # 可重复触发的预警冷却时间（0=每轮都推）
+    },
     "ai": {
         "llm": {
             "provider": "openai",
@@ -62,6 +65,7 @@ DEFAULT_CONFIG = {
         },
         "model": {
             "save_dir": "./data/models",
+            "expire_days": 30,  # 模型过期天数（过期只告警，不阻止使用）
         },
     },
 }

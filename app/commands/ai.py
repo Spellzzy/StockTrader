@@ -20,16 +20,17 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
         code: str = typer.Argument(..., help="股票代码 (如 600519, 支持自动识别sh/sz)"),
         dl: bool = typer.Option(False, "--dl", help="同时使用深度学习模型"),
         llm: bool = typer.Option(False, "--llm", help="追加 LLM 分析点评"),
+        auto_train: bool = typer.Option(False, "--auto-train", help="缺少模型时先自动训练"),
     ):
         """AI 预测股票走势"""
         from app.ai.predictor_service import PredictorService
 
         with console.status(f"[cyan]🔮 正在分析 {code} ...[/cyan]"):
             svc = PredictorService()
-            result = svc.predict(code, use_dl=dl)
+            result = svc.predict(code, use_dl=dl, auto_train=auto_train)
 
         if not result or not result.get("combined"):
-            console.print("[red]❌ 预测失败，数据不足或模型异常[/red]")
+            console.print(f"[red]❌ {result.get('error') if result else '预测失败'}[/red]")
             return
 
         combined = result["combined"]
@@ -135,9 +136,29 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
     def ai_train(
         code: str = typer.Argument(..., help="股票代码"),
         dl: bool = typer.Option(False, "--dl", help="同时训练深度学习模型"),
+        walk_forward: int = typer.Option(
+            0, "--walk-forward", "-wf",
+            help="额外做 N 折滚动窗口验证（更接近真实滚动预测的表现）",
+        ),
     ):
         """训练 AI 预测模型"""
         from app.ai.predictor_service import PredictorService
+
+        if walk_forward > 0:
+            from app.ai.ml_predictor import MLPredictor
+
+            console.print(f"[cyan]🔁 滚动窗口验证 {code}（{walk_forward} 折）...[/cyan]")
+            wf = MLPredictor().walk_forward(code, n_splits=walk_forward)
+            if not wf:
+                console.print("[red]❌ 数据量不足，无法做滚动验证[/red]")
+            else:
+                for fold in wf["folds"]:
+                    console.print(
+                        f"  第 {fold['fold']} 折: 训练 {fold['train_size']} / 测试 {fold['test_size']} "
+                        f"→ 准确率 {fold['accuracy']:.2%}"
+                    )
+                console.print(f"  平均准确率: [bold]{wf['mean_accuracy']:.2%}[/bold]")
+            return
 
         console.print(f"[cyan]🏋️ 开始训练 {code} 的预测模型...[/cyan]")
         svc = PredictorService()

@@ -36,6 +36,22 @@ class ModelManager:
         self.dl_dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
+    def is_expired(payload: Optional[dict]) -> bool:
+        """判断模型是否已过期（依据保存时写入的 meta.expires_at）
+
+        过期只告警不阻止使用，避免线上突然无模型可用。
+        """
+        if not payload:
+            return False
+        expires_at = (payload.get("meta") or {}).get("expires_at")
+        if not expires_at:
+            return False
+        try:
+            return datetime.now() > datetime.fromisoformat(expires_at)
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
     def _require_trainable(code: str) -> str:
         """规范化代码并拒绝指数
 

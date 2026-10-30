@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.db.database import get_session
 from app.models.alert import Alert, AlertHistory, AlertConditionType
@@ -25,8 +26,8 @@ class AlertService:
         3. 触发记录 + 历史查询
     """
 
-    def __init__(self):
-        self.session = get_session()
+    def __init__(self, session: Optional[Session] = None):
+        self.session = session or get_session()
         self.market = MarketService()
         self.feature_engine = FeatureEngine()
 
@@ -159,6 +160,29 @@ class AlertService:
 
     # ==================== 条件匹配引擎 ====================
 
+    def _default_cooldown(self) -> int:
+        """配置里的默认冷却分钟数"""
+        from app.config import get_config
+
+        return int(get_config().get("alerts", {}).get("cooldown_minutes", 0) or 0)
+
+    def _select_active_alerts(self) -> List[Alert]:
+        """取出本轮需要检测的预警：活跃 + (未触发 或 可重复) + 不在冷却期"""
+        stmt = select(Alert).where(
+            Alert.is_active == True,
+            # 未触发 或 可重复触发
+            ((Alert.is_triggered == False) | (Alert.repeat == True)),
+        )
+        now = datetime.now()
+        default_cooldown = self._default_cooldown()
+        alerts = list(self.session.execute(stmt).scalars().all())
+
+        active = [a for a in alerts if not a.in_cooldown(now, default_cooldown)]
+        skipped = len(alerts) - len(active)
+        if skipped:
+            logger.debug(f"本轮跳过 {skipped} 个处于冷却期的预警")
+        return active
+
     def check_alerts(
         self,
         verbose: bool = False,
@@ -177,13 +201,8 @@ class AlertService:
         Returns:
             触发的预警列表 [{alert, trigger_value, message}, ...]
         """
-        # 获取所有活跃且未触发（或可重复触发）的预警
-        stmt = select(Alert).where(
-            Alert.is_active == True,
-            # 未触发 或 可重复触发
-            ((Alert.is_triggered == False) | (Alert.repeat == True)),
-        )
-        alerts = list(self.session.execute(stmt).scalars().all())
+        # 获取所有活跃且未触发（或可重复触发）、且不在冷却期内的预警
+        alerts = self._select_active_alerts()
 
         if not alerts:
             return []

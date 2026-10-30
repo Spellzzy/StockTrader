@@ -42,9 +42,27 @@ def get_session() -> Session:
     return factory()
 
 
+def ensure_alert_cooldown_column(engine=None):
+    """幂等地为 alerts 表补上 cooldown_minutes 列
+
+    P2 引入 Alembic 之后，这类补列逻辑统一交给迁移管理。
+    """
+    from sqlalchemy import inspect, text
+
+    engine = engine or get_engine()
+    columns = {c["name"] for c in inspect(engine).get_columns("alerts")}
+    if "cooldown_minutes" in columns:
+        return False
+
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE alerts ADD COLUMN cooldown_minutes INTEGER"))
+    return True
+
+
 def init_db():
     """初始化数据库（创建所有表）"""
     # 导入所有模型以确保它们注册到 Base
     import app.models  # noqa: F401
     engine = get_engine()
     Base.metadata.create_all(engine)
+    ensure_alert_cooldown_column(engine)

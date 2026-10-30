@@ -92,8 +92,18 @@ class PredictorService:
 
     # ==================== 预测 ====================
 
-    def predict(self, code: str, use_dl: bool = False) -> Optional[dict]:
+    def predict(
+        self,
+        code: str,
+        use_dl: bool = False,
+        auto_train: bool = False,
+    ) -> Optional[dict]:
         """综合预测（融合 ML + DL）
+
+        Args:
+            code: 股票代码
+            use_dl: 是否融合 DL 模型
+            auto_train: 缺模型时是否自动训练（默认 False，避免批量扫描时隐式训练）
 
         Returns:
             {
@@ -106,8 +116,8 @@ class PredictorService:
         result = {"code": code}
 
         # ML 预测 (XGBoost 优先)
-        ml_xgb = self.ml.predict(code, model_type="xgb")
-        ml_rf = self.ml.predict(code, model_type="rf")
+        ml_xgb = self.ml.predict(code, model_type="xgb", auto_train=auto_train)
+        ml_rf = self.ml.predict(code, model_type="rf", auto_train=auto_train)
         result["ml_xgb"] = ml_xgb
         result["ml_rf"] = ml_rf
 
@@ -119,6 +129,13 @@ class PredictorService:
             except Exception as e:
                 logger.error(f"DL 预测失败: {e}")
         result["dl"] = dl_result
+
+        if ml_xgb is None and ml_rf is None and dl_result is None:
+            result["error"] = (
+                f"未找到 {code} 的预测模型。请先执行 `stock-ai train-ai {code}`，"
+                f"或在命令上加 --auto-train。"
+            )
+            return result
 
         # 融合结果
         result["combined"] = self._combine_predictions(ml_xgb, ml_rf, dl_result)

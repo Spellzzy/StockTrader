@@ -56,6 +56,7 @@ ai:
   # ML/DL 模型存储
   model:
     save_dir: "./data/models"
+    expire_days: 30            # 模型过期天数（过期只告警，不阻止使用）
 
 # 消息推送配置
 notification:
@@ -111,6 +112,7 @@ notification:
 alerts:
   check_interval: 30         # 默认检测间隔 (秒)
   watch_interval: 30         # 看盘模式刷新间隔 (秒)
+  cooldown_minutes: 30       # 可重复触发的预警冷却时间（避免每轮重复推送，0=不冷却）
 
 # 回测引擎配置
 backtest:

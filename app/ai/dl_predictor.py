@@ -15,6 +15,7 @@ import numpy as np
 
 from app.ai.feature_engine import FeatureEngine
 from app.ai.model_manager import ModelManager
+from app.ai.split import fit_scaler_on_train, time_split_indices
 from app.services.market_service import MarketService
 
 logger = logging.getLogger(__name__)
@@ -145,20 +146,28 @@ class DLPredictor:
         self.model_manager = ModelManager()
         self.market_service = MarketService()
 
+    @staticmethod
+    def _expiry_timestamp() -> str:
+        """按配置计算模型过期时间"""
+        from datetime import datetime, timedelta
+
+        from app.config import get_config
+
+        days = int(get_config().get("ai", {}).get("model", {}).get("expire_days", 30))
+        return (datetime.now() + timedelta(days=days)).isoformat()
+
     def _prepare_data(
         self,
         code: str,
         count: int = 1000,
         horizon: int = 5,
         threshold: float = 2.0,
-    ) -> Optional[Tuple[np.ndarray, np.ndarray, list]]:
-        """获取并预处理数据
+    ) -> Optional[Tuple[np.ndarray, np.ndarray, list, list]]:
+        """获取并预处理数据（不做标准化，标准化必须等切分之后）
 
         Returns:
-            (X_scaled, y, feature_cols) 或 None
+            (X, y, feature_cols, dates) 或 None
         """
-        from sklearn.preprocessing import StandardScaler
-
         df = self.market_service.get_kline_df(code, period="day", count=count, adjust="qfq")
         if df is None or len(df) < 150:
             logger.warning(f"数据不足: {code}")
@@ -175,15 +184,13 @@ class DLPredictor:
         X = df[feature_cols].values
         y = df["label"].values
 
-        # 标准化
-        scaler = StandardScaler()
-        X = scaler.fit_transform(X)
-
         # 标签映射: -1,0,1 → 0,1,2
         label_map = {-1: 0, 0: 1, 1: 2}
         y = np.array([label_map[v] for v in y])
 
-        return X, y, feature_cols, scaler
+        dates = [str(d)[:10] for d in df["date"]] if "date" in df.columns else []
+
+        return X, y, feature_cols, dates
 
     def train(
         self,
@@ -220,13 +227,21 @@ class DLPredictor:
         if result is None:
             return None
 
-        X, y, feature_cols, scaler = result
-        input_dim = X.shape[1]
+        X, y, feature_cols, dates = result
 
-        # 时序切分
-        split_idx = int(len(X) * 0.8)
-        X_train, X_test = X[:split_idx], X[split_idx:]
-        y_train, y_test = y[:split_idx], y[split_idx:]
+        # 时序切分（切分点两侧留出 horizon 的间隔，避免标签区间重叠）
+        train_slice, test_slice = time_split_indices(len(X), 0.2, gap=horizon)
+        X_train_raw, X_test_raw = X[train_slice], X[test_slice]
+        y_train, y_test = y[train_slice], y[test_slice]
+
+        # 标准化必须放在切分之后：只在训练集上拟合，避免测试集分布泄漏
+        X_train, X_test, scaler = fit_scaler_on_train(X_train_raw, X_test_raw)
+        input_dim = X_train.shape[1]
+
+        train_dates = dates[train_slice]
+        train_start = train_dates[0] if len(train_dates) else None
+        train_end = train_dates[-1] if len(train_dates) else None
+        expires_at = self._expiry_timestamp()
 
         train_ds = StockSequenceDataset(X_train, y_train, seq_len)
         test_ds = StockSequenceDataset(X_test, y_test, seq_len)
@@ -344,6 +359,9 @@ class DLPredictor:
             "epochs": epochs,
             "train_size": len(X_train),
             "test_size": len(X_test),
+            "train_start": train_start,
+            "train_end": train_end,
+            "expires_at": expires_at,
         })
 
         return {
