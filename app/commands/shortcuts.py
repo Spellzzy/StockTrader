@@ -496,9 +496,15 @@ def register_shortcuts(app: typer.Typer, cli_module):
     def quick_train_ai(
         code: str = typer.Argument(..., help="股票代码"),
         dl: bool = typer.Option(False, "--dl", help="同时训练 DL 模型"),
+        dl_arch: str = typer.Option("lstm", "--arch", help="DL 结构: lstm / transformer / both"),
+        walk_forward: int = typer.Option(
+            0, "--walk-forward", "-wf", help="额外做 N 折滚动窗口验证"
+        ),
     ):
         """训练预测模型"""
-        cli_module.ai_train(code=code, dl=dl)
+        cli_module.ai_train(
+            code=code, dl=dl, dl_arch=dl_arch, walk_forward=walk_forward
+        )
 
     @app.command("test-llm", help="测试 LLM 连接")
     def quick_test_llm():

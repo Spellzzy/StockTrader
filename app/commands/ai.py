@@ -157,22 +157,7 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
 
         # 同 ai_predict：直接调用时 Option 默认值是 OptionInfo，需兜底
         walk_forward = as_int(walk_forward)
-
-        if walk_forward > 0:
-            from app.ai.ml_predictor import MLPredictor
-
-            console.print(f"[cyan]🔁 滚动窗口验证 {code}（{walk_forward} 折）...[/cyan]")
-            wf = MLPredictor().walk_forward(code, n_splits=walk_forward)
-            if not wf:
-                console.print("[red]❌ 数据量不足，无法做滚动验证[/red]")
-            else:
-                for fold in wf["folds"]:
-                    console.print(
-                        f"  第 {fold['fold']} 折: 训练 {fold['train_size']} / 测试 {fold['test_size']} "
-                        f"→ 准确率 {fold['accuracy']:.2%}"
-                    )
-                console.print(f"  平均准确率: [bold]{wf['mean_accuracy']:.2%}[/bold]")
-            return
+        dl = as_bool(dl)
 
         console.print(f"[cyan]🏋️ 开始训练 {code} 的预测模型...[/cyan]")
         svc = PredictorService()
@@ -218,6 +203,25 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
             console.print(f"\n[yellow]⚠️ {dl_err['error']}[/yellow]")
 
         console.print(f"\n[green]✅ 训练完成！使用 [bold]stock-ai predict {code}[/bold] 查看预测[/green]")
+
+        # 滚动窗口验证在训练之后跑，给出更接近真实滚动预测的准确率参考
+        if walk_forward > 0:
+            from app.ai.ml_predictor import MLPredictor
+
+            console.print(f"\n[cyan]🔁 滚动窗口验证 {code}（{walk_forward} 折）...[/cyan]")
+            wf = MLPredictor().walk_forward(code, n_splits=walk_forward)
+            if not wf:
+                console.print("[red]❌ 数据量不足，无法做滚动验证[/red]")
+            else:
+                for fold in wf["folds"]:
+                    console.print(
+                        f"  第 {fold['fold']} 折: 训练 {fold['train_size']} / 测试 {fold['test_size']} "
+                        f"→ 准确率 {fold['accuracy']:.2%}"
+                    )
+                console.print(f"  平均准确率: [bold]{wf['mean_accuracy']:.2%}[/bold]")
+                console.print(
+                    "[dim]三分类随机基线约 33%，低于该值说明模型没有预测能力[/dim]"
+                )
 
     @ai_app.command("analyze")
     def ai_analyze(

@@ -197,12 +197,19 @@ class MLPredictor:
         X_train, X_test = X[train_slice], X[test_slice]
         y_train, y_test = y[train_slice], y[test_slice]
 
-        train_start, train_end = self._window_dates(df, train_slice)
+        # 切分出来的训练窗口（用于报告"这个模型看过哪些数据"）
+        holdout_start, holdout_end = self._window_dates(df, train_slice)
+        # 评估完成后会在全量数据上重训，最终落盘的模型看到的是完整区间
+        full_start, full_end = self._window_dates(df, slice(0, len(X)))
         expires_at = self._expiry_timestamp()
 
         window_meta = {
-            "train_start": train_start,
-            "train_end": train_end,
+            "train_start": full_start,
+            "train_end": full_end,
+            "holdout_train_start": holdout_start,
+            "holdout_train_end": holdout_end,
+            # 准确率来自留出集，但模型本身在全量数据上重训过
+            "fitted_on": "full",
             "expires_at": expires_at,
         }
 
@@ -221,13 +228,17 @@ class MLPredictor:
         rf_pred = rf.predict(X_test)
         rf_acc = accuracy_score(y_test, rf_pred)
         rf_report = classification_report(y_test, rf_pred, target_names=["跌", "震荡", "涨"], zero_division=0, output_dict=True)
+        rf_importance = dict(zip(feature_cols, rf.feature_importances_.tolist()))
+
+        # 留出集评估完就在全量数据上重训：否则落盘模型会白白浪费最近 20% 的数据
+        rf.fit(X, y)
 
         self.model_manager.save_ml_model(rf, code, "rf", meta={
             "accuracy": rf_acc,
             "horizon": horizon,
             "threshold": threshold,
             "features": feature_cols,
-            "train_size": len(X_train),
+            "train_size": len(X),
             "test_size": len(X_test),
             **window_meta,
         })
@@ -235,7 +246,7 @@ class MLPredictor:
         results["rf"] = {
             "accuracy": rf_acc,
             "report": rf_report,
-            "feature_importance": dict(zip(feature_cols, rf.feature_importances_.tolist())),
+            "feature_importance": rf_importance,
         }
 
         # ── XGBoost ──
@@ -262,6 +273,10 @@ class MLPredictor:
             xgb_pred = np.array([inv_map[v] for v in xgb_pred_mapped])
             xgb_acc = accuracy_score(y_test, xgb_pred)
             xgb_report = classification_report(y_test, xgb_pred, target_names=["跌", "震荡", "涨"], zero_division=0, output_dict=True)
+            xgb_importance = dict(zip(feature_cols, xgb_model.feature_importances_.tolist()))
+
+            # 同 RF：留出集评估后在全量数据上重训
+            xgb_model.fit(X, np.array([label_map[v] for v in y]))
 
             self.model_manager.save_ml_model(xgb_model, code, "xgb", meta={
                 "accuracy": xgb_acc,
@@ -269,7 +284,7 @@ class MLPredictor:
                 "threshold": threshold,
                 "features": feature_cols,
                 "label_map": label_map,
-                "train_size": len(X_train),
+                "train_size": len(X),
                 "test_size": len(X_test),
                 **window_meta,
             })
@@ -277,7 +292,7 @@ class MLPredictor:
             results["xgb"] = {
                 "accuracy": xgb_acc,
                 "report": xgb_report,
-                "feature_importance": dict(zip(feature_cols, xgb_model.feature_importances_.tolist())),
+                "feature_importance": xgb_importance,
             }
 
         results["meta"] = {

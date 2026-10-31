@@ -30,6 +30,7 @@
 | ML/DL 切分留间隔、标准化只在训练集拟合 | ✅ | `app/ai/split.py` + `tests/test_ml_split.py`、`tests/test_dl_scaler.py` |
 | walk-forward 滚动验证 | ✅ | `train-ai --walk-forward N` |
 | 模型不再隐式训练 | ✅ | `test_predict_does_not_train_silently`；修复 Typer Option 默认值使其真正生效 |
+| 落盘模型在全量数据上重训 | ✅ | 留出集只用来报准确率，模型本身重训到最新一根 K 线（`test_ml_final_fit.py`） |
 | 预警冷却，不再每轮重复推送 | ✅ | `tests/test_alert_cooldown.py`；`alerts.cooldown_minutes` 默认 30 分钟 |
 
 真实行情 A/B 对照（180 天，同一批股票与策略）：
