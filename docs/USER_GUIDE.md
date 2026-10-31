@@ -1526,6 +1526,19 @@ alembic stamp head
 
 日常使用不需要手动跑迁移，CLI 启动时的 `init_db()` 仍会建表并补齐新增列。
 
+### Q: 想要一个能直接看/能分享的总览？
+
+```bash
+stock-ai report              # 生成 data/reports/report_YYYYMMDD.html
+stock-ai rp                  # 缩写
+stock-ai report --no-chart   # 只要表格，出得快
+stock-ai report --with-bt --bt-code sz002555   # 额外附一份多策略回测对比
+```
+
+单文件 HTML，图表以 base64 内嵌，双击即可打开，也可以直接发给别人。
+内容包含：账户概览（总盈亏/浮动/已实现/市值/胜率/盈亏比/最大回撤）、当前持仓、
+累计收益曲线、月度盈亏、胜负统计、持仓分布、个股盈亏排名、最近 20 笔交易。
+
 ### Q: 配置文件在哪里修改？
 
 项目根目录的 `config.yaml`，可调整数据库路径、手续费率、图表样式等。

@@ -556,6 +556,35 @@ def register_shortcuts(app: typer.Typer, cli_module):
             fill=fill, slippage=slippage, chart=chart,
         )
 
+    @app.command("report", help="生成可视化 HTML 报告 (缩写: rp)")
+    def quick_report(
+        output_dir: str = typer.Option("", "--output", "-o", help="输出目录"),
+        with_backtest: bool = typer.Option(False, "--with-bt", help="额外跑多策略回测对比"),
+        backtest_code: str = typer.Option("", "--bt-code", help="回测标的（配合 --with-bt）"),
+        days: int = typer.Option(180, "--bt-days", help="回测天数"),
+        with_chart: bool = typer.Option(True, "--chart/--no-chart", help="是否生成图表"),
+    ):
+        """生成单文件 HTML 可视化报告"""
+        from app.commands.report import do_report
+
+        do_report(
+            output_dir=output_dir,
+            with_backtest=with_backtest,
+            backtest_code=backtest_code,
+            days=days,
+            with_chart=with_chart,
+        )
+
+    @app.command("rp", hidden=True)
+    def alias_rp(
+        output_dir: str = typer.Option("", "--output", "-o", help="输出目录"),
+        with_chart: bool = typer.Option(True, "--chart/--no-chart", help="是否生成图表"),
+    ):
+        """report 的缩写"""
+        from app.commands.report import do_report
+
+        do_report(output_dir=output_dir, with_chart=with_chart)
+
     @app.command("bt-pf", help="多标的组合回测（等权分配资金）")
     def quick_bt_portfolio(
         codes: str = typer.Argument(..., help="股票代码，逗号分隔"),
