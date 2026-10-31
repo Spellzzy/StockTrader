@@ -37,6 +37,9 @@ data/cache/
 # 生成的图表
 data/charts/
 
+# 生成的 HTML 报告
+data/reports/
+
 # 导出的文件
 data/exports/
 

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="stock-trader-ai",
-    version="0.1.0",
+    version="0.2.0",
     description="AI辅助股票交易工具 - 记录、分析、复盘、预测",
     author="SpellZhu",
     packages=find_packages(),
