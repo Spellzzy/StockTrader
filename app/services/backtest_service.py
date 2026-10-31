@@ -96,6 +96,7 @@ class BacktestResult:
     trades: list = field(default_factory=list)  # TradeRecord 列表
     equity_curve: Optional[pd.DataFrame] = None  # 权益曲线 DataFrame
     signals_df: Optional[pd.DataFrame] = None  # 信号数据
+    hint: str = ""  # 无成交等原因提示
 
     def to_dict(self) -> dict:
         """转为可序列化的字典"""
@@ -219,6 +220,18 @@ class BacktestService:
         # 5. 计算绩效
         logger.info("计算绩效指标...")
         self._calculate_metrics(df, result)
+
+        # 6. 无成交时给出原因，避免被误读成"策略没有信号"
+        if result.total_trades == 0:
+            last_close = float(df["close"].iloc[-1]) if not df.empty else 0.0
+            min_lot_cost = last_close * 100 * position_size
+            if last_close > 0 and min_lot_cost > initial_capital * position_size:
+                result.hint = (
+                    f"资金不足以买入 1 手：现价约 {last_close:.2f}，"
+                    f"1 手需 {min_lot_cost:,.0f} 元，当前可投入 {initial_capital * position_size:,.0f} 元"
+                )
+            else:
+                result.hint = "该区间内策略未产生任何买卖信号"
 
         result.signals_df = df
 
@@ -420,6 +433,15 @@ class BacktestService:
         # 构建权益曲线 DataFrame
         if equity_data:
             result.equity_curve = pd.DataFrame(equity_data)
+
+    @staticmethod
+    def rank_results(results: list) -> list:
+        """多策略排序：有成交的优先，再按总收益降序
+
+        没有成交的策略（资金不足 / 无信号）收益恒为 0，
+        直接按收益排会盖过真正跑出结果的策略。
+        """
+        return sorted(results, key=lambda r: (r.total_trades > 0, r.total_return), reverse=True)
 
     @staticmethod
     def curve_metrics(equity, initial_capital: float) -> dict:

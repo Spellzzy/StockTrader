@@ -55,7 +55,11 @@ class KlineCache:
         return self.kline_dir / f"{code}_{period}_{adjust}{CACHE_SUFFIX}"
 
     def _expire_limit(self, df: pd.DataFrame, now: datetime) -> float:
-        """历史数据放宽过期时间"""
+        """当前行情按 expire_minutes 过期，历史行情放宽到 24 小时
+
+        注意不能直接拿 calendar.date() 比：周末/节假日运行时，最后一根 K 线本来就是
+        上一个交易日，会被误判成历史数据从而永不过期。
+        """
         last_date = None
         if "date" in df.columns and not df.empty:
             try:
@@ -63,9 +67,15 @@ class KlineCache:
             except (TypeError, ValueError):
                 last_date = None
 
-        if last_date is not None and last_date < now.date():
-            return STALE_HISTORICAL_MINUTES
-        return float(self.expire_minutes)
+        if last_date is None:
+            return float(self.expire_minutes)
+
+        from app.domain.calendar import get_calendar
+
+        latest_trading_day = get_calendar().previous_trading_day(now)
+        if last_date >= latest_trading_day:
+            return float(self.expire_minutes)
+        return STALE_HISTORICAL_MINUTES
 
     def get(
         self,

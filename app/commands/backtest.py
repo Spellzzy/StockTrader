@@ -79,6 +79,9 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
 
         _render_backtest_result(result)
 
+        if getattr(result, "hint", ""):
+            console.print(f"[yellow]⚠️ 回测无成交：{result.hint}[/yellow]")
+
         if chart and result.total_days > 0:
             from app.visualization.charts import ChartService
 
@@ -241,8 +244,10 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
         table.add_column("交易", width=5, justify="right")
         table.add_column("评分", width=8, justify="center")
 
-        # 按总收益排序
-        results.sort(key=lambda r: r.total_return, reverse=True)
+        # 有成交的优先，再按总收益排序
+        from app.services.backtest_service import BacktestService
+
+        results = BacktestService.rank_results(results)
 
         for i, r in enumerate(results, 1):
             ret_color = "green" if r.total_return >= 0 else "red"
@@ -280,8 +285,14 @@ def register_backtest_commands(backtest_app: typer.Typer, cli_module=None):
 
         # 冠军
         best = results[0]
-        console.print(f"\n[bold green]🏆 最优策略: {best.strategy_name} "
-                       f"(收益 {best.total_return:+.2f}%, 夏普 {best.sharpe_ratio:.2f})[/bold green]")
+        if best.total_trades == 0:
+            console.print(
+                "\n[yellow]⚠️ 所有策略均无成交，无从选出最优策略"
+                "（可检查资金是否够买 1 手，或换更长的时间区间）[/yellow]"
+            )
+        else:
+            console.print(f"\n[bold green]🏆 最优策略: {best.strategy_name} "
+                           f"(收益 {best.total_return:+.2f}%, 夏普 {best.sharpe_ratio:.2f})[/bold green]")
 
     # 将函数挂回 cli_module，供 shortcuts.py 通过 cli_module.xxx 调用
     if cli_module is not None:
