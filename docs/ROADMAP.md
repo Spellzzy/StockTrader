@@ -68,7 +68,25 @@
 | 多标的组合回测 | ✅ | `BacktestService.run_portfolio` + `stock-ai bt-pf <codes>`（等权分配，合并权益曲线） |
 | 选股结果直接送回测 | ✅ | `stock-ai sn --backtest`（对买入命中做组合回测） |
 | 参数寻优（网格搜索） | ⬜ 未做 | 下一步 |
-| 券商接口 | ⬜ 不在计划内 | 仅预留 `Broker` 抽象，模拟盘稳定后再评估 |
+| 执行层 / 订单编排（阶段 0+1） | ✅ | `stock-ai order *`：Manual 人工确认通道，默认只出草稿，绝不自动真实下单 |
+| QMT / Ptrade 真实通道（阶段 3） | ⬜ 未做 | 需券商量化权限与测试环境，未经验证不接 |
+
+### 执行层（半自动）已落地内容
+
+| 能力 | 说明 |
+|------|------|
+| 领域层 `domain/order.py` | 订单状态机（含 UNKNOWN 禁止重下）、幂等键、风控限额（纯函数） |
+| `services/broker/` | Broker ABC + ManualBroker（草稿 CSV/MD）、MockBroker（影子）、PaperBrokerAdapter |
+| `services/order_service.py` | 风控闸门、幂等创建、超时过期、重启恢复、成交回填、对账、事件审计 |
+| `services/order_planner.py` | 信号 → 订单，去重、整手；支持离线信号 CSV 与自选股策略信号 |
+| 2 张表 + 迁移 | `orders` / `order_events`，迁移 `da6fec2a5bda` |
+| 安全默认 | `broker.enabled=false` kill switch；`--live` 必须 `--yes`；不存券商密码 |
+
+验收：25 个执行层单测（状态机、每条风控、幂等、UNKNOWN 不重下、影子链路、
+历史 K 线纸面回放、对账），全量 224 passed；离线 `order plan --no-save` 已跑通。
+
+**明确未做**：没有连接任何券商、没有真实下单能力、没有无人值守自动交易。
+`--live` 在 `broker.enabled=false` 时一律被拒绝，Manual 通道的"提交"仅生成草稿。
 
 ---
 

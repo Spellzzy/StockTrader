@@ -62,7 +62,7 @@ ai:
 notification:
   enabled: true              # 全局开关
   on_alert: true             # 预警触发时推送
-  on_trade: false            # 交易成交时推送 (未来扩展)
+  on_trade: false            # 交易成交时推送（已实现，由 TradeService.add_trade 触发）
 
   channels:
     # Server酱 — 免费微信推送 (https://sct.ftqq.com)
@@ -113,6 +113,22 @@ alerts:
   check_interval: 30         # 默认检测间隔 (秒)
   watch_interval: 30         # 看盘模式刷新间隔 (秒)
   cooldown_minutes: 30       # 可重复触发的预警冷却时间（避免每轮重复推送，0=不冷却）
+
+# 券商通道 / 订单编排（默认只出草稿，绝不自动真实下单）
+broker:
+  enabled: false             # kill switch：false 时 --live 一律被拒绝
+  name: "manual"             # manual=人工确认 / mock=影子 / paper=模拟盘
+  draft_dir: "./data/orders" # 订单草稿输出目录
+  # 密钥不要写这里，用环境变量: STOCK_AI_BROKER__ENABLED 等
+
+risk:
+  whitelist: []              # 允许下单的代码白名单（空=不限制）
+  max_order_amount: 50000    # 单笔上限 (元)
+  max_daily_amount: 100000   # 单日累计上限 (元)
+  max_positions: 10          # 最大持仓只数
+  max_position_ratio: 0.3    # 单票占总资产上限
+  timeout_minutes: 30        # 未成交草稿/委托超时
+  require_confirmation: true # 真实提交必须人工 --yes 二次确认
 
 # 回测引擎配置
 backtest:

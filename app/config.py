@@ -57,6 +57,20 @@ DEFAULT_CONFIG = {
     "alerts": {
         "cooldown_minutes": 30,      # 可重复触发的预警冷却时间（0=每轮都推）
     },
+    "broker": {
+        "enabled": False,            # kill switch：默认拒绝真实提交，只出草稿
+        "name": "manual",            # manual（人工确认）/ paper
+        "draft_dir": "./data/orders",
+    },
+    "risk": {
+        "whitelist": [],             # 空 = 不限制
+        "max_order_amount": 50000.0,      # 单笔上限（元）
+        "max_daily_amount": 100000.0,     # 单日累计上限（元）
+        "max_positions": 10,              # 最大持仓只数
+        "max_position_ratio": 0.3,        # 单票占总资产上限
+        "timeout_minutes": 30,            # 未成交超时撤单
+        "require_confirmation": True,     # 真实下单必须人工二次确认
+    },
     "ai": {
         "llm": {
             "provider": "openai",
@@ -160,6 +174,9 @@ def load_config() -> dict:
     )
     config["ai"]["model"]["save_dir"] = str(
         PROJECT_ROOT / config["ai"]["model"]["save_dir"]
+    )
+    config["broker"]["draft_dir"] = str(
+        PROJECT_ROOT / config["broker"]["draft_dir"]
     )
 
     return config

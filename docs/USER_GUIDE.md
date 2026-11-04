@@ -1526,6 +1526,49 @@ alembic stamp head
 
 日常使用不需要手动跑迁移，CLI 启动时的 `init_db()` 仍会建表并补齐新增列。
 
+### Q: 怎么把策略信号变成可执行的订单？
+
+`stock-ai order` 是**半自动执行层**：默认只生成草稿，绝不自动真实下单。
+
+```bash
+# 离线纸面回放（不落库）
+stock-ai order plan -f tests/fixtures/signals_demo.csv --no-save
+
+# 用自选股最新策略信号编排并落库
+stock-ai order plan --from-watchlist -s macd_cross
+
+# 手工建单 / 查看 / 风控检查
+stock-ai order create sh600519 buy 1400 --qty 100 -s manual
+stock-ai order list
+stock-ai order risk <幂等键>
+
+# 提交（默认 dry-run，只出草稿；--live 需配置开启 + --yes）
+stock-ai order submit <幂等键>
+
+# 在券商客户端人工下单后回填成交（写 trades 表 + 推送 + 重建持仓）
+stock-ai order fill <幂等键> --price 1400.00
+
+# 运维
+stock-ai order draft          # 重新导出当日草稿
+stock-ai order cancel <幂等键>
+stock-ai order expire         # 超时清理
+stock-ai order recover        # 重启恢复（状态不明标 UNKNOWN，绝不重下）
+stock-ai order reconcile      # 已成交订单 vs trades 表对账
+```
+
+配置文件 `broker:` / `risk:` 段（见 `config.yaml.example`）：
+
+- `broker.enabled` 默认 `false`，这是 kill switch；为 false 时 `--live` 一律被拒绝
+- `broker.name`：`manual`（人工确认，默认）/ `mock`（影子）/ `paper`（模拟盘）
+- `risk` 段：白名单、单笔上限 5 万、单日上限 10 万、最大持仓数、单票仓位比、超时、二次确认
+- 密钥不要写进配置，用环境变量，例如 `STOCK_AI_BROKER__ENABLED=true`
+
+产物：`data/orders/orders_YYYYMMDD.csv` 和 `.md` 草稿；订单与状态变更存
+`orders` / `order_events` 两张表。
+
+> 目前**没有连接任何券商，也没有真实下单能力**。`--live` 在默认配置下被拒绝，
+> Manual 通道的"提交"只是生成一份给人看的草稿。草稿与预测结果均不构成投资建议。
+
 ### Q: 每天自动生成的报告在哪？
 
 Windows 计划任务 `StockAI_AM`（10:00）和 `StockAI_PM`（14:30）每天各跑一次，

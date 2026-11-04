@@ -1,0 +1,4 @@
+code,side,price,strategy,bar_date,name,quantity
+sh600519,buy,1400.00,macd_cross,20261104,贵州茅台,100
+sz002555,sell,16.50,rsi,20261104,三七互娱,300
+sz000001,buy,12.00,manual,20261104,平安银行,0

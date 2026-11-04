@@ -60,6 +60,7 @@ backtest_app = typer.Typer(help="回测引擎", no_args_is_help=True, hidden=Tru
 notify_app = typer.Typer(help="消息推送管理", no_args_is_help=True, hidden=True)
 digest_app = typer.Typer(help="智能日报（AI 盯盘助手）", no_args_is_help=True, hidden=True)
 paper_app = typer.Typer(help="模拟盘（不涉真实资金）", no_args_is_help=True, hidden=True)
+order_app = typer.Typer(help="订单编排与人工执行（默认只出草稿）", no_args_is_help=True, hidden=True)
 
 app.add_typer(trade_app, name="trade")
 app.add_typer(portfolio_app, name="portfolio")
@@ -73,6 +74,7 @@ app.add_typer(backtest_app, name="backtest")
 app.add_typer(notify_app, name="notify")
 app.add_typer(digest_app, name="digest")
 app.add_typer(paper_app, name="paper")
+app.add_typer(order_app, name="order")
 
 
 
@@ -1049,6 +1051,12 @@ def init():
 from app.commands.paper import register_paper_commands
 
 register_paper_commands(paper_app, registry)
+
+
+# ==================== 订单编排（从 commands/order.py 加载）====================
+from app.commands.order import register_order_commands
+
+register_order_commands(order_app, registry)
 
 
 # ==================== 注册快捷命令（从 commands/shortcuts.py 加载）====================
