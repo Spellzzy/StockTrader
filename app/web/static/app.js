@@ -54,7 +54,7 @@ async function loadOverview() {
   const d = await api('/api/overview');
   const p = d.portfolio || {}, a = d.analysis || {};
   $('overview-time').textContent = '更新于 ' + (d.generated_at || '-').replace('T', ' ');
-  $('version').textContent = 'v' + (await api('/api/health')).version;
+  $('version').textContent = 'v' + (window.ST.version || '-');
 
   const profit = p.total_profit || 0;
   $('cards').innerHTML = [
@@ -209,9 +209,15 @@ window.ST = {
 async function refresh() {
   clearError();
   try {
-    await api('/api/health');
+    /* health 与页面数据并行；version 在这里统一写入，避免 loadOverview
+       再发一次 /api/health（原来是串行两次请求）。 */
+    const healthP = api('/api/health');
+    const loaderP = loaders[activeTab] ? loaders[activeTab]() : Promise.resolve();
+    const health = await healthP;
+    window.ST.version = health.version;
+    $('version').textContent = 'v' + health.version;
     setStatus(true);
-    if (loaders[activeTab]) await loaders[activeTab]();
+    await loaderP;
   } catch (e) {
     setStatus(false, '连接失败');
     showError(String(e.message || e) + ' · 请确认服务已启动（双击 启动.bat）');
@@ -228,7 +234,10 @@ document.querySelectorAll('.tab').forEach(btn => {
     refresh();
   });
 });
-$('refresh').addEventListener('click', refresh);
+$('refresh').addEventListener('click', () => {
+  if (window.ST && window.ST.forceRefresh) window.ST.forceRefresh();
+  else refresh();
+});
 $('quote-btn').addEventListener('click', () => refreshSafe(loadQuotes));
 $('kline-btn').addEventListener('click', () => refreshSafe(loadKline));
 $('codes').addEventListener('keydown', e => { if (e.key === 'Enter') refreshSafe(loadQuotes); });

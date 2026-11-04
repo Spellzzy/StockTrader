@@ -359,6 +359,17 @@ async def watchlist_quotes() -> dict:
     return ok(await run_in_threadpool(collect))
 
 
+@app.post("/api/cache/clear-quotes")
+async def clear_quotes_cache() -> dict:
+    """清空服务端行情缓存，供手动「刷新」强制拉新行情
+
+    只影响内存缓存，不改动任何业务数据；重复调用无副作用。
+    """
+    from app.data.stock_data_client import clear_quote_cache
+
+    return ok({"cleared": clear_quote_cache()})
+
+
 @app.get("/api/strategies")
 async def strategies() -> dict:
     from app.services.strategy import list_strategies

@@ -3,14 +3,43 @@
 将 stock-data 命令行工具封装为 Python 可调用的数据服务。
 """
 
+import copy
 import json
 import subprocess
 import logging
+import threading
+import time
 from typing import Optional
 
-from app.config import get_stock_data_bin
+from app.config import get_config, get_stock_data_bin
 
 logger = logging.getLogger(__name__)
+
+# quote 每次都要启动一次 stock-data 子进程（实测 1.2~3 秒），
+# Web 端总览 / 持仓 / 自选三个页面会重复请求同一批代码。
+# 这里做进程内短 TTL 缓存，行情本身非 tick 级，20 秒内复用是安全的。
+_QUOTE_CACHE: dict[tuple[str, ...], tuple[float, dict]] = {}
+_QUOTE_LOCK = threading.Lock()
+_QUOTE_CACHE_MAX = 128
+DEFAULT_QUOTE_TTL = 20.0
+
+
+def quote_cache_ttl() -> float:
+    """缓存秒数，可通过 market.quote_cache_seconds 配置，0 表示关闭"""
+    try:
+        return max(0.0, float(
+            (get_config().get("market") or {}).get("quote_cache_seconds", DEFAULT_QUOTE_TTL)
+        ))
+    except (TypeError, ValueError):
+        return DEFAULT_QUOTE_TTL
+
+
+def clear_quote_cache() -> int:
+    """清空行情缓存，返回被清除的条目数（手动刷新时调用）"""
+    with _QUOTE_LOCK:
+        count = len(_QUOTE_CACHE)
+        _QUOTE_CACHE.clear()
+    return count
 
 
 class StockDataError(Exception):
@@ -106,17 +135,34 @@ class StockDataClient:
 
     # ==================== 行情 ====================
 
-    def quote(self, *codes: str) -> dict:
+    def quote(self, *codes: str, use_cache: bool = True) -> dict:
         """查询实时行情
 
         Args:
             codes: 一个或多个股票代码 (如 sh600519, hk00700)
+            use_cache: 是否使用短 TTL 缓存（默认 True；需要强制拉新时传 False）
 
         Returns:
             行情数据字典
         """
-        code_str = ",".join(codes)
-        return self._run_json("quote", code_str)
+        key = tuple(sorted(codes))
+        ttl = quote_cache_ttl() if use_cache else 0.0
+
+        if ttl > 0 and key:
+            with _QUOTE_LOCK:
+                hit = _QUOTE_CACHE.get(key)
+                if hit and (time.monotonic() - hit[0]) < ttl:
+                    logger.debug(f"行情缓存命中: {key}")
+                    return copy.deepcopy(hit[1])
+                if len(_QUOTE_CACHE) > _QUOTE_CACHE_MAX:
+                    _QUOTE_CACHE.clear()
+
+        data = self._run_json("quote", ",".join(codes))
+
+        if ttl > 0 and key and isinstance(data, dict):
+            with _QUOTE_LOCK:
+                _QUOTE_CACHE[key] = (time.monotonic(), copy.deepcopy(data))
+        return data
 
     def kline(
         self,

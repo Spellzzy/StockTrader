@@ -19,6 +19,10 @@ stock_data:
 # 默认市场
 market:
   default: "A"  # A股/港股(HK)/美股(US)
+  # 实时行情缓存秒数：同一批代码在 TTL 内复用上次结果，避免重复启动
+  # stock-data 子进程（实测每次 1.2~3 秒）。0 = 关闭缓存，每次都拉新。
+  # 也可用环境变量 STOCK_AI_MARKET__QUOTE_CACHE_SECONDS 覆盖。
+  quote_cache_seconds: 20
 
 # 涨跌颜色方案
 # "red_up" = 红涨绿跌 (A股惯例)

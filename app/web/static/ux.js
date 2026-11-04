@@ -56,12 +56,10 @@
     if (on) $('busy-text').textContent = text || '加载中…';
   }
 
-  async function request(path, options) {
-    options = options || {};
-    const method = options.method || 'GET';
-    const body = options.body || '';
+  const inflight = new Map();
+
+  async function performRequest(path, options, method, body, key) {
     const cacheable = CACHE_PATHS.test(path);
-    const key = method + '|' + path + '|' + body;
 
     if (cacheable && cache.has(key)) {
       const hit = cache.get(key);
@@ -102,12 +100,37 @@
     }
   }
 
+  /* 并发的相同 GET 合并为一个请求（自动刷新 + 切 tab 常同时触发），
+     POST 写操作不做合并，仍由 confirm + 幂等键保护。 */
+  async function request(path, options) {
+    options = options || {};
+    const method = options.method || 'GET';
+    const body = options.body || '';
+    const key = method + '|' + path + '|' + body;
+    if (method === 'GET' && inflight.has(key)) return inflight.get(key);
+
+    const task = performRequest(path, options, method, body, key);
+    if (method === 'GET') {
+      inflight.set(key, task);
+      task.then(() => inflight.delete(key), () => inflight.delete(key));
+    }
+    return task;
+  }
+
   ST.api = (path) => request(path, {});
   ST.post = (path, body) => request(path, {
     method: 'POST', body: JSON.stringify(body || {}),
   });
   ST.cancelActive = () => { if (activeReq) activeReq.ctrl.abort(); };
   ST.clearCache = () => cache.clear();
+  /* 手动刷新：清掉服务端行情缓存与前端慢任务缓存，确保真的拉到新数据。
+     自动刷新走 window.refresh()，让 20 秒 TTL 自然过期，避免反复起子进程。 */
+  ST.forceRefresh = async () => {
+    try { await ST.post('/api/cache/clear-quotes', {}); }
+    catch (e) { /* 清缓存失败不阻塞刷新 */ }
+    ST.clearCache();
+    await window.refresh();
+  };
   $('busy-cancel').addEventListener('click', () => {
     ST.cancelActive();
     toast('已取消本次请求', 'info', 1800);
@@ -407,9 +430,13 @@
   const COMMANDS = TABS.map(([id, label]) => ({
     label: '打开 ' + label, hint: '页面', run: () => goTab(id),
   })).concat([
-    { label: '刷新当前页', hint: '重新拉取数据', run: () => window.refresh() },
+    { label: '刷新当前页', hint: '强制拉新行情', run: () => ST.forceRefresh() },
     { label: '清除慢任务缓存', hint: '回测 / 寻优 / 预测',
-      run: () => { ST.clearCache(); toast('缓存已清除', 'ok'); } },
+      run: () => {
+        ST.clearCache();
+        ST.post('/api/cache/clear-quotes', {}).catch(() => {});
+        toast('缓存已清除', 'ok');
+      } },
     { label: '导出当前页表格 CSV', hint: '第一张表',
       run: () => {
         const panel = $('panel-' + activeTab);

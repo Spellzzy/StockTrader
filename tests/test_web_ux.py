@@ -52,6 +52,19 @@ def test_ux_js_covers_all_four_areas():
         assert marker in js, f"ux.js 缺少 {marker}"
 
 
+def test_performance_enhancements_are_wired():
+    app_js = client.get("/static/app.js").text
+    ux_js = client.get("/static/ux.js").text
+    # health 与页面数据并行，且 version 不再重复请求
+    for marker in ("healthP", "loaderP", "window.ST.version"):
+        assert marker in app_js, f"app.js 缺少 {marker}"
+    assert "await api('/api/health')" not in app_js
+    # GET 并发去重 + 手动刷新强制拉新
+    for marker in ("inflight", "performRequest", "forceRefresh",
+                   "/api/cache/clear-quotes"):
+        assert marker in ux_js, f"ux.js 缺少 {marker}"
+
+
 def test_picker_mount_deferred_until_dom_ready():
     """解析期搬动 input 会让宿主 WebView 的元素引用失效，必须等 DOM 就绪"""
     js = client.get("/static/ux.js").text
