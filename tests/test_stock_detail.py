@@ -218,11 +218,14 @@ def test_news_extractor_handles_empty():
 def test_frontend_detail_panes_are_wired(client):
     detail_js = client.get("/static/detail.js").text
     for marker in ("detail-tab", "switchPane", "/api/stock/fund",
-                   "/api/stock/news", "flow-bar", "news-item", "paneLoaded"):
+                   "/api/stock/news", "flow-bar", "news-item", "paneLoaded",
+                   "candleChart", "maSeries", "kline-period", "kline-adjust",
+                   "orderBook", "innerOuter", "total_market_cap"):
         assert marker in detail_js, f"detail.js 缺少 {marker}"
 
     css = client.get("/static/style.css").text
-    for cls in (".detail-tabs", ".detail-tab", ".flow-bar", ".news-item"):
+    for cls in (".detail-tabs", ".detail-tab", ".flow-bar", ".news-item",
+                ".candle-svg", ".book-bar", ".io-bar", ".kline-tools"):
         assert cls in css, f"style.css 缺少 {cls}"
 
 

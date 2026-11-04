@@ -230,14 +230,20 @@ async def kline(
     code: str = Query(..., description="股票代码"),
     count: int = Query(120, ge=10, le=1000),
     period: str = Query("day"),
+    adjust: str = Query("qfq", pattern="^(qfq|hfq|)$"),
 ) -> dict:
     from app.services.market_service import MarketService
 
     def collect():
-        df = MarketService().get_kline_df(code, period=period, count=count)
+        df = MarketService().get_kline_df(
+            code, period=period, count=count, adjust=adjust
+        )
         return df_records(df.tail(count))
 
-    return ok({"code": code, "period": period, "rows": await run_in_threadpool(collect)})
+    return ok({
+        "code": code, "period": period, "adjust": adjust,
+        "rows": await run_in_threadpool(collect),
+    })
 
 
 @app.get("/api/search")

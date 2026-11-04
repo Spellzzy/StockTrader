@@ -144,6 +144,33 @@ def test_kline_serializes_dates_and_nan(client, monkeypatch):
     assert rows[1]["close"] is None  # NaN 不能出现在 JSON 里
 
 
+def test_kline_forwards_period_count_adjust(client, monkeypatch):
+    seen = {}
+    df = pd.DataFrame({
+        "date": pd.bdate_range("2026-01-01", periods=2),
+        "close": [10.0, 11.0],
+    })
+
+    def fake(self, code, **kw):
+        seen.update(kw)
+        return df
+
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_kline_df", fake
+    )
+    d = client.get("/api/kline", params={
+        "code": "sh600519", "period": "week", "count": 60, "adjust": "hfq",
+    }).json()["data"]
+
+    assert seen == {"period": "week", "count": 60, "adjust": "hfq"}
+    assert d["period"] == "week" and d["adjust"] == "hfq"
+
+
+def test_kline_rejects_invalid_adjust(client):
+    r = client.get("/api/kline", params={"code": "sh600519", "adjust": "bad"})
+    assert r.status_code == 422
+
+
 def test_search(client):
     d = client.get("/api/search", params={"keyword": "茅台"}).json()
     assert d["data"]["result"] == "搜索结果: 茅台"
