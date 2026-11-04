@@ -793,6 +793,42 @@ async def write_portfolio(req: PortfolioWrite) -> dict:
     return await _write(req, "portfolio", execute)
 
 
+# ==================== 自选股编辑（新增 / 移除 / 改备注） ====================
+
+class WatchlistWrite(WriteBase):
+    op: str = Field("add", pattern="^(add|remove|note)$")
+    code: str = ""
+    note: str = ""
+
+
+@app.post("/api/write/watchlist")
+async def write_watchlist(req: WatchlistWrite) -> dict:
+    """编辑我的自选：新增 / 移除 / 改备注
+
+    与交易录入、持仓校正一样走 confirm + web_writes 幂等。
+    remove 是软删除（is_watched=False），保留股票基础信息与历史备注。
+    """
+    from app.services.watchlist_service import WatchlistService
+
+    def execute():
+        if not req.code:
+            raise ValueError("该操作需要股票代码 code")
+        service = WatchlistService()
+
+        if req.op == "add":
+            stock = service.add_watch(req.code, note=req.note)
+            return {"op": "add", "code": stock.code, "name": stock.name or ""}
+
+        if req.op == "remove":
+            return {"op": "remove", "code": req.code,
+                    "removed": service.remove_watch(req.code)}
+
+        return {"op": "note", "code": req.code,
+                "updated": service.update_note(req.code, req.note)}
+
+    return await _write(req, "watchlist", execute)
+
+
 # 静态资源挂在最后，避免覆盖 API 路由
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

@@ -69,10 +69,24 @@
         <button id="watchlist-refresh" class="btn ghost">刷新自选行情</button>
         <span id="watchlist-hint" class="dim"></span>
       </div>
+
+      <div class="result-box">
+        <div class="form-grid">
+          <label>股票代码<input id="wl-code" type="text" placeholder="如 600519 或 sh600519"></label>
+          <label>备注（关注理由）<input id="wl-note" type="text" placeholder="可选；也可点表格里的「改备注」"></label>
+        </div>
+        <label class="confirm"><input id="wl-confirm" type="checkbox"> 确认执行自选变更</label>
+        <div class="toolbar">
+          <button id="wl-add" class="btn primary">添加自选</button>
+          <button id="wl-note-save" class="btn ghost">保存备注</button>
+          <span id="wl-hint" class="dim"></span>
+        </div>
+      </div>
+
       <div class="table-wrap"><table id="watchlist-quotes">
         <thead><tr><th>代码</th><th>名称</th><th class="num">现价</th><th class="num">涨跌幅</th>
           <th class="num">涨跌额</th><th class="num">今开</th><th class="num">最高</th>
-          <th class="num">最低</th><th>备注</th></tr></thead>
+          <th class="num">最低</th><th>备注</th><th>操作</th></tr></thead>
         <tbody></tbody></table></div>
 
       <div class="section-head"><h2>实时行情</h2><span class="dim">支持空格或逗号分隔多只股票</span></div>

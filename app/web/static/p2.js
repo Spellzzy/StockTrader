@@ -203,10 +203,16 @@ async function loadWatchlistQuotes() {
       <td class="num ${cls(x.change)}">${signed(x.change)}</td>
       <td class="num">${finite(x.open)}</td><td class="num">${finite(x.high)}</td>
       <td class="num">${finite(x.low)}</td>
-      <td>${esc(x.note || '')}</td></tr>`).join(''),
-      9, '暂无自选股，可在 TUI 用 / 搜索添加');
+      <td>${esc(x.note || '')}</td>
+      <td><div class="row-actions">
+        <button class="btn ghost" data-wl="note" data-code="${esc(x.code)}"
+          data-note="${esc(x.note || '')}">改备注</button>
+        <button class="btn ghost danger" data-wl="remove"
+          data-code="${esc(x.code)}">移除</button>
+      </div></td></tr>`).join(''),
+      10, '暂无自选股，可在上方表单添加');
     hint.textContent = rows.length
-      ? `共 ${rows.length} 只 · 点击一行可填入查询 / K 线输入框`
+      ? `共 ${rows.length} 只 · 点击一行填入查询 / K 线框，右侧按钮可编辑`
       : '暂无自选股';
   } catch (e) {
     hint.textContent = '自选行情加载失败：' + String(e.message || e);
@@ -218,8 +224,40 @@ async function loadMarket() {
 }
 register('market', loadMarket);
 
+async function wlWrite(btn, op, extra = {}) {
+  const code = $('#wl-code').value.trim();
+  if (!code) { showError('请填股票代码'); return; }
+  const body = Object.assign({ op, code, note: $('#wl-note').value.trim() }, extra);
+  const d = await doWrite(btn, '/api/write/watchlist', body,
+    { confirmId: 'wl-confirm', hintId: 'wl-hint' });
+  if (!d) return;
+  if (op === 'add') { $('#wl-code').value = ''; $('#wl-note').value = ''; }
+  await loadWatchlistQuotes();
+}
+
+async function removeWatch(btn) {
+  const code = btn.dataset.code;
+  if (!window.confirm(`确定从自选中移除 ${code}？（只取消关注，不会删除股票记录）`)) return;
+  const d = await doWrite(btn, '/api/write/watchlist', { op: 'remove', code });
+  if (d) await loadWatchlistQuotes();
+}
+
 $('#watchlist-refresh').addEventListener('click', loadWatchlistQuotes);
+$('#wl-add').addEventListener('click', e => wlWrite(e.currentTarget, 'add'));
+$('#wl-note-save').addEventListener('click', e => wlWrite(e.currentTarget, 'note'));
 $('#watchlist-quotes').querySelector('tbody').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-wl]');
+  if (btn) {
+    if (btn.dataset.wl === 'note') {
+      $('#wl-code').value = btn.dataset.code;
+      $('#wl-note').value = btn.dataset.note || '';
+      $('#wl-note').focus();
+      $('#wl-hint').textContent = '改好备注后勾选确认，点「保存备注」';
+    } else if (btn.dataset.wl === 'remove') {
+      removeWatch(btn);
+    }
+    return;
+  }
   const tr = e.target.closest('tr[data-code]');
   if (!tr) return;
   $('#codes').value = tr.dataset.code;
