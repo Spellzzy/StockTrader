@@ -359,6 +359,163 @@ async def watchlist_quotes() -> dict:
     return ok(await run_in_threadpool(collect))
 
 
+def _kline_tech(rows: list[dict]) -> dict:
+    """从 K 线记录算轻量技术指标（纯 Python，不跑模型、不触网）"""
+    closes = []
+    for r in rows:
+        try:
+            if r.get("close") is not None:
+                closes.append(float(r["close"]))
+        except (TypeError, ValueError):
+            continue
+    if not closes:
+        return {}
+
+    last = closes[-1]
+    ma5 = sum(closes[-5:]) / len(closes[-5:])
+    ma20 = sum(closes[-20:]) / len(closes[-20:])
+    chg20 = None
+    if len(closes) > 20 and closes[-21]:
+        chg20 = (last / closes[-21] - 1) * 100
+    rets = [closes[i] / closes[i - 1] - 1
+            for i in range(1, len(closes)) if closes[i - 1]]
+    volatility = None
+    if len(rets) >= 2:
+        from statistics import pstdev
+        volatility = pstdev(rets[-20:]) * 100
+    high, low = max(closes), min(closes)
+    return {
+        "ma5": round(ma5, 3),
+        "ma20": round(ma20, 3),
+        "change_20d": round(chg20, 2) if chg20 is not None else None,
+        "volatility_20d": round(volatility, 2) if volatility is not None else None,
+        "high_60d": round(high, 3),
+        "low_60d": round(low, 3),
+        "range_position": round((last - low) / (high - low) * 100, 1)
+        if high > low else None,
+    }
+
+
+@app.get("/api/stock/detail")
+async def stock_detail(code: str = Query(..., min_length=4)) -> dict:
+    """个股详情子页面数据：一次聚合报价 / 走势 / 指标 / 本股状态
+
+    只读接口。行情与 K 线各自单独容错，任一拉不到也返回其余信息。
+    """
+    from sqlalchemy import func, select
+
+    from app.db.database import session_scope
+    from app.models.alert import Alert
+    from app.models.portfolio import PortfolioRecord
+    from app.models.stock import Stock, normalize_stock_code
+    from app.models.trade import Trade
+    from app.services.market_service import MarketService
+
+    try:
+        norm_code = normalize_stock_code(code)
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的股票代码")
+
+    def collect():
+        market = MarketService()
+        try:
+            quote = (market.get_quote(norm_code) or {}).get(norm_code, {}) or {}
+        except Exception as e:
+            logger.warning(f"详情行情获取失败 {norm_code}: {e}")
+            quote = {}
+        try:
+            df = market.get_kline_df(norm_code, count=60)
+            rows = df_records(df.tail(60))
+        except Exception as e:
+            logger.warning(f"详情K线获取失败 {norm_code}: {e}")
+            rows = []
+
+        stock_info, holding, alert_count, recent = {}, None, 0, []
+        try:
+            with session_scope() as s:
+                stock = s.execute(
+                    select(Stock).where(Stock.code == norm_code)
+                ).scalar_one_or_none()
+                if stock:
+                    stock_info = {
+                        "name": stock.name or "",
+                        "market": stock.market or "",
+                        "industry": stock.industry or "",
+                        "sector": stock.sector or "",
+                        "is_watched": bool(stock.is_watched),
+                        "watch_note": stock.watch_note or "",
+                    }
+                h = s.execute(
+                    select(PortfolioRecord).where(
+                        PortfolioRecord.stock_code == norm_code
+                    )
+                ).scalar_one_or_none()
+                if h:
+                    holding = {
+                        "quantity": h.quantity, "avg_cost": h.avg_cost,
+                        "total_cost": h.total_cost,
+                        "realized_profit": h.realized_profit,
+                        "manual_override": bool(h.manual_override),
+                        "is_cleared": h.quantity <= 0,
+                    }
+                alert_count = s.scalar(
+                    select(func.count()).select_from(Alert)
+                    .where(Alert.stock_code == norm_code)
+                ) or 0
+                trades = s.execute(
+                    select(Trade).where(Trade.stock_code == norm_code)
+                    .order_by(Trade.trade_time.desc()).limit(5)
+                ).scalars().all()
+                recent = [{
+                    "trade_time": t.trade_time, "action": t.action,
+                    "price": t.price, "quantity": t.quantity, "profit": t.profit,
+                } for t in trades]
+        except Exception as e:
+            logger.warning(f"详情本地数据读取失败 {norm_code}: {e}")
+
+        return {
+            "code": norm_code,
+            "name": stock_info.get("name") or quote.get("name") or "",
+            "quote": quote,
+            "kline": rows,
+            "tech": _kline_tech(rows),
+            "stock": stock_info,
+            "holding": holding,
+            "alert_count": alert_count,
+            "recent_trades": recent,
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    return ok(await run_in_threadpool(collect))
+
+
+@app.get("/api/stock/profile")
+async def stock_profile(code: str = Query(..., min_length=4)) -> dict:
+    """公司资料（按需加载，避免拖慢详情首屏）"""
+    from app.models.stock import normalize_stock_code
+    from app.services.market_service import MarketService
+
+    try:
+        norm_code = normalize_stock_code(code)
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的股票代码")
+
+    def collect():
+        try:
+            data = MarketService().get_profile(norm_code)
+        except Exception as e:
+            logger.warning(f"公司资料获取失败 {norm_code}: {e}")
+            return {"error": str(e)}
+        if isinstance(data, dict):
+            inner = data.get("data")
+            if isinstance(inner, dict):
+                return inner
+            return data
+        return {"raw": str(data)}
+
+    return ok({"code": norm_code, "profile": await run_in_threadpool(collect)})
+
+
 @app.post("/api/cache/clear-quotes")
 async def clear_quotes_cache() -> dict:
     """清空服务端行情缓存，供手动「刷新」强制拉新行情

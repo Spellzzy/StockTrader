@@ -1,6 +1,6 @@
 /**
  * Web 前端冒烟测试：在 Node 里用最小 DOM mock 依序执行
- * app.js / ux.js / p1.js / p2.js，任一脚本顶层抛错即失败。
+ * app.js / ux.js / p1.js / p2.js / detail.js，任一脚本顶层抛错即失败。
  *
  * 背景：这些文件是经典 script，共享全局词法环境；曾因顶层 const 重名
  * 和 $() 选择器用法不一致导致整个脚本静默失效，纯接口测试发现不了。
@@ -54,6 +54,8 @@ globalThis.document = {
   addEventListener() {},
 };
 globalThis.window = globalThis;
+globalThis.location = { hash: "", pathname: "/" };
+globalThis.history = { replaceState() {} };
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 globalThis.setInterval = () => 0;      // 不真的起定时器，避免测试进程不退出
 globalThis.clearInterval = () => {};
@@ -66,7 +68,7 @@ if (!globalThis.crypto) globalThis.crypto = (await import("node:crypto")).webcry
 let asyncFailures = 0;
 process.on("unhandledRejection", () => { asyncFailures += 1; });
 
-const names = ["app.js", "ux.js", "p1.js", "p2.js"];
+const names = ["app.js", "ux.js", "p1.js", "p2.js", "detail.js"];
 const combined = names
   .map((name) => readFileSync(join(root, "app/web/static", name), "utf-8"))
   .join("\n;\n");
@@ -85,4 +87,4 @@ if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);
   process.exit(1);
 }
-console.log("JS 冒烟测试通过：四个脚本顶层均无异常");
+console.log("JS 冒烟测试通过：五个脚本顶层均无异常");

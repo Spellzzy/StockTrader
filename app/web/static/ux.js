@@ -274,6 +274,17 @@
     if (!table) return;
     table._allRows = Array.from(table.querySelector('tbody').children)
       .map(tr => tr.cloneNode(true));
+    /* 第一列若是股票代码，做成可点开的详情入口 */
+    table._allRows.forEach(tr => {
+      const td = tr.children && tr.children[0];
+      if (!td) return;
+      const code = (td.textContent || '').trim();
+      if (/^(sh|sz|hk|bj|us)?\d{6}$/i.test(code)) {
+        td.classList.add('stock-link');
+        td.dataset.code = code;
+        td.title = '点击查看个股详情';
+      }
+    });
     if (table.dataset.enhanced) { applyTable(table); return; }
     table.dataset.enhanced = '1';
 
@@ -324,6 +335,17 @@
     enhanceTable(table);
   };
 
+  /* 捕获阶段拦截代码单元格点击，避免同时触发「点击行填入代码」等冒泡监听 */
+  document.addEventListener('click', e => {
+    const target = e.target;
+    const td = target && target.closest && target.closest('td.stock-link');
+    if (td && ST.openStockDetail) {
+      e.stopPropagation();
+      e.preventDefault();
+      ST.openStockDetail(td.dataset.code);
+    }
+  }, true);
+
   /* ==================== 5. 通用代码选择器 ==================== */
   let pickerData = null;
   async function ensurePickerData() {
@@ -346,6 +368,18 @@
     btn.textContent = '自选/持仓';
     btn.title = '从已收藏或持仓中选代码';
     wrap.appendChild(btn);
+
+    const detailBtn = document.createElement('button');
+    detailBtn.type = 'button';
+    detailBtn.className = 'btn ghost picker-detail';
+    detailBtn.textContent = '详情';
+    detailBtn.title = '打开该股票的个股详情';
+    detailBtn.addEventListener('click', () => {
+      const code = input.value.trim().split(/[\s,]+/).pop();
+      if (code && ST.openStockDetail) ST.openStockDetail(code);
+      else ST.toast('请先填股票代码', 'info');
+    });
+    wrap.appendChild(detailBtn);
 
     const pop = document.createElement('div');
     pop.className = 'picker-pop hidden';
@@ -446,6 +480,20 @@
     { label: '切换自动刷新', hint: '开 / 关',
       run: () => { autoBox.checked = !autoBox.checked; applyAuto();
         toast(autoBox.checked ? '自动刷新已开启' : '自动刷新已暂停', 'info', 1800); } },
+    { label: '查看个股详情', hint: '取当前代码框的股票',
+      run: () => {
+        const ids = ['codes', 'kline-code', 'bt-code', 'lab-code', 'predict-code',
+                     'w-code', 'a-code', 'p-code', 'wl-code', 'pos-code'];
+        let picked = '';
+        for (const id of ids) {
+          const el = $(id);
+          if (!el) continue;
+          const v = el.value.trim().split(/[\s,]+/).pop();
+          if (/^(sh|sz|hk|bj|us)?\d{6}$/i.test(v)) { picked = v; break; }
+        }
+        if (picked && ST.openStockDetail) ST.openStockDetail(picked);
+        else toast('先在任意代码框填一个股票代码', 'info');
+      } },
   ]);
   let cmdIndex = 0, cmdFiltered = COMMANDS.slice();
 

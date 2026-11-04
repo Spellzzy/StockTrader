@@ -336,9 +336,30 @@
     </div>
   </div>
 
+  <div id="stock-detail" class="detail-overlay hidden">
+    <aside class="detail-drawer">
+      <header class="detail-head">
+        <div>
+          <h2 id="detail-title">个股详情</h2>
+          <span id="detail-sub" class="dim"></span>
+        </div>
+        <button id="detail-close" class="btn ghost" title="关闭 (Esc)">✕</button>
+      </header>
+      <div id="detail-body" class="detail-body"></div>
+      <footer class="detail-foot">
+        <button id="detail-refresh" class="btn ghost">↻ 刷新</button>
+        <button id="detail-goto-market" class="btn ghost">查行情</button>
+        <button id="detail-goto-predict" class="btn ghost">AI 预测</button>
+        <button id="detail-goto-write" class="btn ghost">录入交易</button>
+        <button id="detail-profile" class="btn ghost">公司资料</button>
+      </footer>
+    </aside>
+  </div>
+
   <script src="/static/app.js"></script>
   <script src="/static/ux.js"></script>
   <script src="/static/p1.js"></script>
   <script src="/static/p2.js"></script>
+  <script src="/static/detail.js"></script>
 </body>
 </html>
