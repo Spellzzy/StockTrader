@@ -37,7 +37,7 @@ from rich import box
 from datetime import datetime
 
 from app.db.database import init_db
-from app.models.stock import normalize_stock_code
+from app.models.stock import parse_stock_codes
 from app.theme import get_up, get_down, get_color
 
 console = Console(force_terminal=True)
@@ -274,10 +274,14 @@ def trade_import(
 
 # ==================== 持仓管理 ====================
 @portfolio_app.command("show")
-def portfolio_show():
+def portfolio_show(
+    wide: bool = typer.Option(False, "--wide", help="显示全部列（窄终端默认自动精简）"),
+):
     """查看当前持仓"""
+    from app.commands.tables import Column, render_table
     from app.services.portfolio_service import PortfolioService
 
+    wide = wide if isinstance(wide, bool) else False
     svc = PortfolioService()
     summary = svc.get_total_summary()
     holdings = summary.get("holdings", [])
@@ -286,22 +290,20 @@ def portfolio_show():
         console.print("[yellow]当前没有持仓[/yellow]")
         return
 
-    table = Table(
-        title="当前持仓",
-        box=box.ROUNDED,
-        show_lines=True,
-        header_style="bold cyan",
-    )
-    table.add_column("代码", width=10)
-    table.add_column("名称", width=10)
-    table.add_column("持仓", width=8, justify="right")
-    table.add_column("成本价", width=10, justify="right")
-    table.add_column("现价", width=10, justify="right")
-    table.add_column("市值", width=12, justify="right")
-    table.add_column("浮动盈亏", width=12, justify="right")
-    table.add_column("盈亏率", width=8, justify="right")
-    table.add_column("今日涨跌", width=8, justify="right")
+    # 顺序即显示顺序：先看"赚/亏多少"，数量与成本退到次要位置
+    columns = [
+        Column("code", "代码", 10, priority=0, justify="left", min_width=10),
+        Column("name", "名称", 10, priority=1, justify="left", min_width=8),
+        Column("pnl", "浮动盈亏", 12, priority=2, min_width=10),
+        Column("rate", "盈亏率", 10, priority=3, min_width=8),
+        Column("market_value", "市值", 12, priority=4, min_width=10),
+        Column("qty", "持仓", 9, priority=5, min_width=8),
+        Column("cost", "成本价", 10, priority=6),
+        Column("price", "现价", 10, priority=7),
+        Column("chg", "今日涨跌", 10, priority=8),
+    ]
 
+    rows = []
     for h in holdings:
         pnl = h.get("unrealized_profit", 0)
         pnl_rate = h.get("unrealized_profit_rate", 0)
@@ -309,19 +311,22 @@ def portfolio_show():
         pnl_color = "green" if pnl >= 0 else "red"
         chg_color = "green" if chg >= 0 else "red"
 
-        table.add_row(
-            h["stock_code"],
-            h.get("stock_name", ""),
-            f"{h['quantity']:,}",
-            f"{h['avg_cost']:.2f}",
-            f"{h.get('current_price', 0):.2f}",
-            f"{h.get('market_value', 0):,.2f}",
-            f"[{pnl_color}]{pnl:+,.2f}[/{pnl_color}]",
-            f"[{pnl_color}]{pnl_rate:+.2f}%[/{pnl_color}]",
-            f"[{chg_color}]{chg:+.2f}%[/{chg_color}]",
-        )
+        rows.append({
+            "code": h["stock_code"],
+            "name": h.get("stock_name", ""),
+            "qty": f"{h['quantity']:,}",
+            "cost": f"{h['avg_cost']:.2f}",
+            "price": f"{h.get('current_price', 0):.2f}",
+            "market_value": f"{h.get('market_value', 0):,.2f}",
+            "pnl": f"[{pnl_color}]{pnl:+,.2f}[/{pnl_color}]",
+            "rate": f"[{pnl_color}]{pnl_rate:+.2f}%[/{pnl_color}]",
+            "chg": f"[{chg_color}]{chg:+.2f}%[/{chg_color}]",
+        })
 
-    console.print(table)
+    console.print(render_table(
+        columns, rows, title="当前持仓",
+        width=console.width, wide=wide, show_lines=True,
+    ))
 
     # 汇总信息
     console.print(
@@ -467,31 +472,39 @@ def market_search(
 
 @market_app.command("quote")
 def market_quote(
-    codes: str = typer.Argument(..., help="股票代码(逗号分隔, 如 600519,00700, 自动识别前缀)"),
+    codes: list[str] = typer.Argument(..., help="股票代码，空格或逗号分隔 (如 600519 000001 或 600519,000001)"),
+    wide: bool = typer.Option(False, "--wide", help="显示全部列（窄终端默认自动精简）"),
 ):
     """查询实时行情"""
+    from app.commands.tables import Column, render_table
     from app.services.market_service import MarketService
 
+    wide = wide if isinstance(wide, bool) else False
     svc = MarketService()
-    code_list = [normalize_stock_code(c.strip()) for c in codes.split(",")]
+    code_list = parse_stock_codes(codes)
+    if not code_list:
+        console.print("[red]❌ 未提供有效的股票代码[/red]")
+        return
     data = svc.get_quote(*code_list)
 
     if not data:
         console.print("[red]❌ 获取行情失败[/red]")
         return
 
-    table = Table(title="📈 实时行情", box=box.ROUNDED, header_style="bold cyan")
-    table.add_column("代码", width=10)
-    table.add_column("名称", width=10)
-    table.add_column("现价", width=10, justify="right")
-    table.add_column("涨跌幅", width=10, justify="right")
-    table.add_column("涨跌额", width=10, justify="right")
-    table.add_column("今开", width=10, justify="right")
-    table.add_column("最高", width=10, justify="right")
-    table.add_column("最低", width=10, justify="right")
-    table.add_column("成交量", width=10, justify="right")
-    table.add_column("市盈率", width=8, justify="right")
+    columns = [
+        Column("code", "代码", 10, priority=0, justify="left", min_width=10),
+        Column("name", "名称", 10, priority=1, justify="left", min_width=8),
+        Column("price", "现价", 10, priority=2, min_width=9),
+        Column("chg", "涨跌幅", 10, priority=3, min_width=9),
+        Column("change", "涨跌额", 10, priority=4, min_width=8),
+        Column("volume", "成交量", 10, priority=5, min_width=7),
+        Column("open", "今开", 10, priority=6),
+        Column("high", "最高", 10, priority=7),
+        Column("low", "最低", 10, priority=8),
+        Column("pe", "市盈率", 8, priority=9),
+    ]
 
+    rows = []
     for code in code_list:
         q = data.get(code, {})
         if not q:
@@ -501,20 +514,23 @@ def market_quote(
         vol = q.get("volume", 0)
         vol_str = f"{vol / 10000:.1f}万" if vol > 10000 else str(vol)
 
-        table.add_row(
-            code,
-            q.get("name", ""),
-            f"{q.get('price', 0):.2f}",
-            f"[{color}]{chg:+.2f}%[/{color}]",
-            f"[{color}]{q.get('change', 0):+.2f}[/{color}]",
-            f"{q.get('open', 0):.2f}",
-            f"{q.get('high', 0):.2f}",
-            f"{q.get('low', 0):.2f}",
-            vol_str,
-            f"{q.get('pe_ratio', 0):.2f}",
-        )
+        rows.append({
+            "code": code,
+            "name": q.get("name", ""),
+            "price": f"{q.get('price', 0):.2f}",
+            "chg": f"[{color}]{chg:+.2f}%[/{color}]",
+            "change": f"[{color}]{q.get('change', 0):+.2f}[/{color}]",
+            "volume": vol_str,
+            "open": f"{q.get('open', 0):.2f}",
+            "high": f"{q.get('high', 0):.2f}",
+            "low": f"{q.get('low', 0):.2f}",
+            "pe": f"{q.get('pe_ratio', 0):.2f}",
+        })
 
-    console.print(table)
+    console.print(render_table(
+        columns, rows, title="📈 实时行情",
+        width=console.width, wide=wide,
+    ))
 
 
 @market_app.command("kline")
@@ -1084,6 +1100,11 @@ for _name in (
 from app.commands.shortcuts import register_shortcuts
 
 register_shortcuts(app, registry)
+
+# ==================== 策略实验室（从 commands/strategy_lab.py 加载）====================
+from app.commands.strategy_lab import register_lab_commands
+
+register_lab_commands(app)
 
 
 if __name__ == "__main__":

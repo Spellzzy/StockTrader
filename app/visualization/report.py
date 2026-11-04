@@ -321,11 +321,11 @@ class HTMLReport:
     @staticmethod
     def _run_backtests(code: str, days: int) -> list:
         from app.services.backtest_service import BacktestService
-        from app.services.strategy import list_strategies
+        from app.services.strategy import list_strategy_names
 
         service = BacktestService()
         results = []
-        for name in list_strategies():
+        for name in list_strategy_names():
             try:
                 results.append(service.run(code, strategy=name, days=days))
             except Exception as e:

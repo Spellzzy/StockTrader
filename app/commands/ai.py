@@ -61,15 +61,30 @@ def register_ai_commands(ai_app: typer.Typer, cli_module=None):
             "",
         ]
 
+        quality = combined.get("quality") or {}
+        if quality.get("below_baseline"):
+            lines += [
+                f"[bold red]⚠️ 模型无预测能力[/bold red]  {quality.get('note', '')}",
+                "[dim]已自动降权并限制为最多 2 星，请勿据此下单[/dim]",
+                "",
+            ]
+
+        def accuracy_mark(accuracy) -> str:
+            """准确率低于随机基线时打标，避免把弱模型当成可靠依据"""
+            if accuracy and accuracy < quality.get("baseline", 0.3333):
+                return " [red]↓低于基线[/red]"
+            return ""
+
         # ML 结果
         for key, label in [("ml_xgb", "XGBoost"), ("ml_rf", "RandomForest")]:
             ml = result.get(key)
             if ml:
                 c = "green" if ml["signal"] == "看涨" else "red" if ml["signal"] == "看跌" else "yellow"
+                acc = ml.get("model_accuracy", 0)
                 lines.append(
                     f"  {label}: [{c}]{ml['signal']}[/{c}] "
                     f"({ml['confidence']:.1f}%) "
-                    f"[dim]模型准确率 {ml.get('model_accuracy', 0):.1%}[/dim]"
+                    f"[dim]模型准确率 {acc:.1%}[/dim]{accuracy_mark(acc)}"
                 )
 
         # DL 结果

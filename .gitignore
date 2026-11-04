@@ -43,6 +43,9 @@ data/reports/
 # 订单草稿
 data/orders/
 
+# 测试覆盖率产物
+.coverage
+
 # 导出的文件
 data/exports/
 

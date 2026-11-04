@@ -129,6 +129,25 @@ def test_failing_section_does_not_break_report(monkeypatch, tmp_path):
     assert "账户概览" in open(path, encoding="utf-8").read()
 
 
+def test_backtest_section_uses_strategy_names(monkeypatch):
+    """回归：list_strategies() 返回 dict，这里必须用 list_strategy_names()"""
+    import app.services.backtest_service as bt_module
+    from app.services.backtest_service import BacktestResult
+    from app.visualization.report import HTMLReport
+
+    def fake_run(self, code, strategy, days):
+        result = BacktestResult(code=code, strategy_name=strategy)
+        result.total_return = 1.0
+        return result
+
+    monkeypatch.setattr(bt_module.BacktestService, "run", fake_run)
+
+    results = HTMLReport._run_backtests("sz000001", 180)
+
+    assert len(results) == 7
+    assert all(isinstance(r.strategy_name, str) for r in results)
+
+
 def test_format_helpers():
     assert _fmt(None) == "-"
     assert _fmt(1234.5678) == "1,234.57"

@@ -111,6 +111,33 @@ def normalize_stock_codes(codes_str: str) -> str:
     return ",".join(normalize_stock_code(c) for c in parts)
 
 
+def parse_stock_codes(codes) -> list[str]:
+    """把命令行传入的股票代码统一解析成规范化列表
+
+    同时支持:
+        "600519,000001"    逗号串（旧写法）
+        ["sh600519", "sz000001"]   Typer 的 List[str] 参数
+        ["600519,000001", "sz002555"]   混合
+
+    去重且保序，避免同一只股票被重复请求。
+    """
+    if isinstance(codes, str):
+        raw = codes.replace(",", " ").split()
+    elif isinstance(codes, (list, tuple, set)):
+        raw = []
+        for item in codes:
+            raw.extend(str(item).replace(",", " ").split())
+    else:
+        return []
+
+    result = []
+    for code in raw:
+        normalized = normalize_stock_code(code.strip())
+        if normalized and normalized not in result:
+            result.append(normalized)
+    return result
+
+
 class Stock(Base):
     """股票基本信息表（本地缓存）"""
     __tablename__ = "stocks"

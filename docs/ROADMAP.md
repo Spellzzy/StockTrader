@@ -67,7 +67,10 @@
 | Transformer 接入命令行 | ✅ | `train-ai --dl --arch transformer / both` |
 | 多标的组合回测 | ✅ | `BacktestService.run_portfolio` + `stock-ai bt-pf <codes>`（等权分配，合并权益曲线） |
 | 选股结果直接送回测 | ✅ | `stock-ai sn --backtest`（对买入命中做组合回测） |
-| 参数寻优（网格搜索） | ⬜ 未做 | 下一步 |
+| 参数寻优 + rolling walk-forward | ✅ | `stock-ai optimize`：参数网格（限定在已有指标列）、扩张窗口、样本不足标注 |
+| 策略信号质量报告 | ✅ | `stock-ai signal-report --all`：命中率、样本内外衰减、配对交易胜率 |
+| AI 预测质量闸门 | ✅ | 准确率低于三分类随机基线 33% 时降权、限 2 星并明确标注 |
+| 使用体验 | ✅ | `q` 支持空格分隔多股票、表格列宽自适应 + `--wide`、`commands` 全命令索引 |
 | 执行层 / 订单编排（阶段 0+1） | ⏸ **已实现，冻结不开放** | 代码与测试保留，CLI 入口由 `features.order_enabled=false` 关闭；当前转去优化策略与使用体验 |
 | QMT / Ptrade 真实通道（阶段 3） | ⬜ 未做 | 需券商量化权限与测试环境，未经验证不接 |
 

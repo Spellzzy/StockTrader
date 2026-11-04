@@ -277,6 +277,15 @@ def get_strategy(name: str, **kwargs) -> BaseStrategy:
     return cls(**kwargs)
 
 
+def list_strategy_names() -> list[str]:
+    """只返回策略名称（给需要遍历策略名的调用方用）
+
+    `list_strategies()` 返回的是含 name/description/class 的 dict 列表，
+    直接拿它当字符串用会报 unhashable type: 'dict'。
+    """
+    return list(BUILTIN_STRATEGIES.keys())
+
+
 def list_strategies() -> list:
     """列出所有内置策略"""
     result = []

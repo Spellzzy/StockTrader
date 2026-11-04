@@ -19,7 +19,16 @@ logger = logging.getLogger(__name__)
 class PredictorService:
     """AI 预测统一服务层"""
 
-    def __init__(self):
+    def __init__(self, quality_baseline: Optional[float] = None):
+        from app.config import get_config
+
+        cfg = get_config().get("ai", {}).get("quality", {}) or {}
+        self.quality_baseline = float(
+            quality_baseline if quality_baseline is not None
+            else cfg.get("random_baseline", 0.3333)
+        )
+        self.weak_model_weight = float(cfg.get("weak_model_weight", 0.25))
+
         self.ml = MLPredictor()
         self.model_manager = ModelManager()
         self._dl = None  # 延迟加载 DL，避免无 torch 时报错
@@ -155,25 +164,50 @@ class PredictorService:
         权重: XGBoost 0.4 + RandomForest 0.25 + DL 0.35
         如果缺少某个模型，重新分配权重。
         """
-        signal_values = []  # (signal_value, confidence, weight)
+        candidates = []  # (prediction, base_weight)
 
         if ml_xgb:
-            signal_values.append((ml_xgb["signal_value"], ml_xgb["confidence"], 0.4))
+            candidates.append((ml_xgb, 0.4))
         if ml_rf:
-            signal_values.append((ml_rf["signal_value"], ml_rf["confidence"], 0.25))
+            candidates.append((ml_rf, 0.25))
         if dl_result:
-            signal_values.append((dl_result["signal_value"], dl_result["confidence"], 0.35))
+            candidates.append((dl_result, 0.35))
 
-        if not signal_values:
+        if not candidates:
             return {"signal": "无数据", "score": 0, "confidence": 0}
 
-        # 归一化权重
-        total_weight = sum(w for _, _, w in signal_values)
-        normalized = [(sv, conf, w / total_weight) for sv, conf, w in signal_values]
+        # 质量闸门：准确率低于三分类随机基线的模型权重打折，
+        # 否则一个没有预测能力的模型也能靠高置信度把综合信号顶成 5 星。
+        accuracies = []
+        weighted = []
+        for pred, base_weight in candidates:
+            acc = pred.get("model_accuracy")
+            if isinstance(acc, (int, float)) and acc > 0:
+                accuracies.append(float(acc))
+                weight = base_weight * (
+                    self.weak_model_weight if acc < self.quality_baseline else 1.0
+                )
+            else:
+                weight = base_weight  # 没有准确率元数据时不额外惩罚
+            weighted.append((pred["signal_value"], pred["confidence"], weight))
 
-        # 加权评分 (-100 ~ +100)
-        weighted_signal = sum(sv * conf * w for sv, conf, w in normalized)
-        weighted_confidence = sum(conf * w for _, conf, w in normalized)
+        mean_accuracy = sum(accuracies) / len(accuracies) if accuracies else None
+        below_baseline = (
+            mean_accuracy is not None and mean_accuracy < self.quality_baseline
+        )
+        quality_factor = (
+            max(self.weak_model_weight, min(1.0, mean_accuracy / self.quality_baseline))
+            if mean_accuracy is not None and self.quality_baseline > 0
+            else 1.0
+        )
+
+        # 归一化权重
+        total_weight = sum(w for _, _, w in weighted) or 1.0
+        normalized = [(sv, conf, w / total_weight) for sv, conf, w in weighted]
+
+        # 加权评分 (-100 ~ +100)，整体再乘质量系数
+        weighted_signal = sum(sv * conf * w for sv, conf, w in normalized) * quality_factor
+        weighted_confidence = sum(conf * w for _, conf, w in normalized) * quality_factor
 
         # 判断综合信号
         if weighted_signal > 15:
@@ -185,6 +219,10 @@ class PredictorService:
         else:
             signal = "震荡"
             stars = max(1, 3 - int(abs(weighted_signal) / 10))
+
+        # 模型整体不比抛硬币强时，最多给 2 星，避免误导
+        if below_baseline:
+            stars = min(stars, 2)
 
         # 收集关键因子
         key_factors = []
@@ -219,13 +257,27 @@ class PredictorService:
             elif boll < 0.1:
                 key_factors.append("✅ 价格接近布林下轨")
 
+        quality_note = ""
+        if below_baseline and mean_accuracy is not None:
+            quality_note = (
+                f"模型平均准确率 {mean_accuracy:.1%} 低于三分类随机基线 "
+                f"{self.quality_baseline:.1%}，不具备可靠预测能力，结论仅供参考"
+            )
+
         return {
             "signal": signal,
             "score": round(weighted_signal, 1),
             "confidence": round(weighted_confidence, 1),
             "stars": stars,
             "key_factors": key_factors,
-            "models_used": len(signal_values),
+            "models_used": len(candidates),
+            "quality": {
+                "baseline": self.quality_baseline,
+                "mean_accuracy": mean_accuracy,
+                "below_baseline": below_baseline,
+                "factor": round(quality_factor, 3),
+                "note": quality_note,
+            },
         }
 
     # ==================== LLM 分析 ====================

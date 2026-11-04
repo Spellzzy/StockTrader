@@ -162,14 +162,18 @@ def register_shortcuts(app: typer.Typer, cli_module):
     # ==================== 持仓管理 ====================
 
     @app.command("show", help="查看当前持仓 (缩写: w)")
-    def quick_show():
+    def quick_show(
+        wide: bool = typer.Option(False, "--wide", help="显示全部列"),
+    ):
         """查看当前持仓"""
-        cli_module.portfolio_show()
+        cli_module.portfolio_show(wide=wide)
 
     @app.command("w", hidden=True)
-    def alias_w():
+    def alias_w(
+        wide: bool = typer.Option(False, "--wide", help="显示全部列"),
+    ):
         """show 的缩写 (w = watch)"""
-        cli_module.portfolio_show()
+        cli_module.portfolio_show(wide=wide)
 
     @app.command("rebuild", help="重建持仓 (缩写: rb)")
     def quick_rebuild():
@@ -236,14 +240,20 @@ def register_shortcuts(app: typer.Typer, cli_module):
         cli_module.market_search(keyword=keyword)
 
     @app.command("quote", help="查询实时行情 (缩写: q)")
-    def quick_quote(codes: str = typer.Argument(..., help="股票代码(逗号分隔)")):
+    def quick_quote(
+        codes: list[str] = typer.Argument(..., help="股票代码，空格或逗号分隔"),
+        wide: bool = typer.Option(False, "--wide", help="显示全部列"),
+    ):
         """查询实时行情"""
-        cli_module.market_quote(codes=codes)
+        cli_module.market_quote(codes=codes, wide=wide)
 
     @app.command("q", hidden=True)
-    def alias_q(codes: str = typer.Argument(..., help="股票代码(逗号分隔)")):
+    def alias_q(
+        codes: list[str] = typer.Argument(..., help="股票代码，空格或逗号分隔"),
+        wide: bool = typer.Option(False, "--wide", help="显示全部列"),
+    ):
         """quote 的缩写"""
-        cli_module.market_quote(codes=codes)
+        cli_module.market_quote(codes=codes, wide=wide)
 
     @app.command("kline", help="查询K线数据 (缩写: k，加 -g 出图)")
     def quick_kline(
@@ -555,6 +565,24 @@ def register_shortcuts(app: typer.Typer, cli_module):
             stop_loss=stop_loss, take_profit=take_profit, position=position,
             fill=fill, slippage=slippage, chart=chart,
         )
+
+    @app.command("commands", help="查看全部命令索引 (缩写: cmd)")
+    def quick_commands(
+        group: str = typer.Option("", "--group", "-g", help="只看某个子命令组，如 ai / paper"),
+    ):
+        """列出顶层命令与隐藏的子命令组"""
+        from app.commands.index import do_commands
+
+        do_commands(group=group)
+
+    @app.command("cmd", hidden=True)
+    def alias_cmd(
+        group: str = typer.Option("", "--group", "-g", help="只看某个子命令组"),
+    ):
+        """commands 的缩写"""
+        from app.commands.index import do_commands
+
+        do_commands(group=group)
 
     @app.command("report", help="生成可视化 HTML 报告 (缩写: rp)")
     def quick_report(

@@ -76,6 +76,11 @@ DEFAULT_CONFIG = {
         "require_confirmation": True,     # 真实下单必须人工二次确认
     },
     "ai": {
+        "quality": {
+            # 三分类随机基线 1/3；模型准确率低于它时降权且不给强信号
+            "random_baseline": 0.3333,
+            "weak_model_weight": 0.25,  # 弱模型权重打折系数
+        },
         "llm": {
             "provider": "openai",
             "api_key": "",
