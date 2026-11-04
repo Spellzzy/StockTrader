@@ -234,6 +234,17 @@ class PortfolioService:
             },
         }
 
+    def clear_holding(self, stock_code: str, reason: str = "") -> dict:
+        """手工清仓：数量置 0 并锁定该行（保留成本与已实现盈亏供追溯）"""
+        if not self.get_holding(normalize_stock_code(stock_code)):
+            raise ValueError(f"没有 {stock_code} 的持仓记录，无法清仓")
+
+        result = self.update_holding(
+            stock_code, quantity=0, reason=f"手工清仓；{reason or '未填写理由'}"
+        )
+        result["cleared"] = True
+        return result
+
     def locked_codes(self) -> list[str]:
         """返回所有被手工锁定的股票代码"""
         records = self.session.execute(
@@ -243,18 +254,24 @@ class PortfolioService:
         ).scalars().all()
         return list(records)
 
-    def get_portfolio_with_market_data(self) -> list[dict]:
-        """获取持仓列表 + 实时行情数据"""
-        holdings = self.get_portfolio()
+    def get_portfolio_with_market_data(self, include_cleared: bool = False) -> list[dict]:
+        """获取持仓列表 + 实时行情数据
+
+        Args:
+            include_cleared: 是否包含数量为 0 的已清仓记录。已清仓行不需要
+                实时行情，所以只为有持仓的代码发起请求，避免无谓开销。
+        """
+        holdings = self.get_portfolio(include_cleared=include_cleared)
         if not holdings:
             return []
 
-        # 批量获取实时行情
-        codes = [h.stock_code for h in holdings]
-        try:
-            quotes = self._client.quote(*codes)
-        except Exception:
-            quotes = {}
+        codes = [h.stock_code for h in holdings if h.quantity > 0]
+        quotes = {}
+        if codes:
+            try:
+                quotes = self._client.quote(*codes)
+            except Exception:
+                quotes = {}
 
         result = []
         for h in holdings:
@@ -272,7 +289,17 @@ class PortfolioService:
                 "manual_override": bool(h.manual_override),
                 "override_note": h.override_note,
                 "override_at": h.override_at,
+                "is_cleared": h.quantity <= 0,
             }
+
+            if data["is_cleared"]:
+                data.update({
+                    "current_price": 0, "market_value": 0,
+                    "unrealized_profit": 0, "unrealized_profit_rate": 0,
+                    "change_percent": 0,
+                })
+                result.append(data)
+                continue
 
             # 尝试获取实时价格
             quote_data = quotes.get(h.stock_code, {})

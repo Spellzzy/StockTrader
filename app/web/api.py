@@ -300,14 +300,17 @@ async def trades(limit: int = Query(50, ge=1, le=500)) -> dict:
 
 
 @app.get("/api/portfolio")
-async def portfolio() -> dict:
+async def portfolio(include_cleared: bool = False) -> dict:
     from app.services.portfolio_service import PortfolioService
 
     def collect():
         service = PortfolioService()
         return {
-            "holdings": service.get_portfolio_with_market_data(),
+            "holdings": service.get_portfolio_with_market_data(
+                include_cleared=include_cleared
+            ),
             "summary": service.get_total_summary(),
+            "include_cleared": include_cleared,
         }
 
     return ok(await run_in_threadpool(collect))
@@ -702,7 +705,7 @@ async def write_paper(req: PaperWrite) -> dict:
 # ==================== 持仓手工校正 ====================
 
 class PortfolioWrite(WriteBase):
-    op: str = Field("edit", pattern="^(edit|unlock|rebuild)$")
+    op: str = Field("edit", pattern="^(edit|clear|unlock|rebuild)$")
     code: str = ""
     quantity: int | None = Field(None, ge=0)
     avg_cost: float | None = Field(None, ge=0)
@@ -714,7 +717,9 @@ class PortfolioWrite(WriteBase):
 async def write_portfolio(req: PortfolioWrite) -> dict:
     """手工校正持仓 / 解除锁定 / 从交易全量重建
 
-    - edit: 改数量与成本价，并把该行标记为 manual_override（重建时跳过）
+    - edit: 改数量与成本价，并把该行标记为 manual_override（重建时跳过）；
+      代码不存在时按 quantity / avg_cost 手工新增一条持仓
+    - clear: 手工清仓（数量置 0 并锁定）
     - unlock: 解除锁定并立即按交易记录恢复
     - rebuild: 强制全量重建，会清除所有手工校正（危险操作，必须确认）
     """
@@ -736,6 +741,9 @@ async def write_portfolio(req: PortfolioWrite) -> dict:
                 req.code, quantity=req.quantity, avg_cost=req.avg_cost,
                 stock_name=req.name, reason=req.reason,
             )}
+
+        if req.op == "clear":
+            return {"op": "clear", **service.clear_holding(req.code, reason=req.reason)}
 
         return {"op": "unlock", **service.unlock_holding(req.code)}
 

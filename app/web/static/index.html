@@ -157,12 +157,19 @@
 
     <!-- 交易持仓 -->
     <section id="panel-trades" class="panel hidden">
-      <div class="section-head"><h2>当前持仓</h2>
+      <div class="section-head"><h2>持仓管理</h2>
         <span class="dim">手工校正的行会被锁定，普通「重建持仓」不会再覆盖它</span></div>
 
+      <div class="toolbar">
+        <label class="toggle"><input id="pos-show-cleared" type="checkbox"> 显示已清仓</label>
+        <button id="pos-add" class="btn primary">+ 新增持仓</button>
+        <span id="pos-summary" class="dim"></span>
+      </div>
+
       <div id="pos-edit-box" class="result-box hidden">
-        <h3>编辑持仓 · <span id="pos-edit-code"></span></h3>
+        <h3><span id="pos-edit-title">编辑持仓</span> · <span id="pos-edit-code"></span></h3>
         <div class="form-grid">
+          <label id="pos-code-wrap">股票代码<input id="pos-code" type="text" placeholder="如 600519"></label>
           <label>数量（股）<input id="pos-qty" type="number" min="0"></label>
           <label>成本价<input id="pos-cost" type="number" step="0.01" min="0"></label>
           <label>名称<input id="pos-name" type="text"></label>

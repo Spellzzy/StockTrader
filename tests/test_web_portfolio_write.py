@@ -39,7 +39,7 @@ def client(monkeypatch, isolate_config):
 
     monkeypatch.setattr(
         "app.services.portfolio_service.PortfolioService.get_portfolio_with_market_data",
-        lambda self: [{
+        lambda self, **kw: [{
             "stock_code": "sh600519", "stock_name": "贵州茅台", "quantity": 500,
             "avg_cost": 12.0, "current_price": 1400.0,
             "unrealized_profit": 1000.0, "unrealized_profit_rate": 1.0,
@@ -159,6 +159,52 @@ def test_portfolio_read_exposes_lock_flag(client):
 
 def test_frontend_has_edit_controls(client):
     text = client.get("/").text
-    for marker in ("pos-edit-box", "pos-confirm", "pos-rebuild"):
+    for marker in ("pos-edit-box", "pos-confirm", "pos-rebuild",
+                   "pos-show-cleared", "pos-add", "pos-code"):
         assert marker in text
+    js = client.get("/static/p2.js").text
+    for marker in ("include_cleared=", "data-pos=\"clear\"",
+                   "openPosEdit(null, 'create')", "op: 'clear'",
+                   "pos-show-cleared", "pos-add"):
+        assert marker in js, f"p2.js 缺少 {marker}"
     assert client.get("/static/p2.js").status_code == 200
+
+
+def test_portfolio_read_supports_include_cleared(client, monkeypatch):
+    seen = []
+
+    def fake_view(self, **kw):
+        seen.append(kw)
+        return [{
+            "stock_code": "sh600519", "stock_name": "", "quantity": 0,
+            "avg_cost": 0.0, "current_price": 0, "unrealized_profit": 0,
+            "manual_override": True, "override_note": "", "override_at": None,
+            "is_cleared": True,
+        }]
+
+    monkeypatch.setattr(
+        "app.services.portfolio_service.PortfolioService.get_portfolio_with_market_data",
+        fake_view,
+    )
+    d = client.get("/api/portfolio?include_cleared=true").json()["data"]
+
+    assert d["include_cleared"] is True
+    assert d["holdings"][0]["is_cleared"] is True
+    assert seen == [{"include_cleared": True}]
+    assert client.get("/api/portfolio").json()["data"]["include_cleared"] is False
+
+
+def test_clear_op(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.portfolio_service.PortfolioService.clear_holding",
+        lambda self, code, reason="": {
+            "stock_code": code, "cleared": True, "manual_override": True,
+        },
+    )
+    r = client.post("/api/write/portfolio", json={
+        "client_id": "pos-client-0010", "confirm": True,
+        "op": "clear", "code": "sh600519", "reason": "页面手工清仓",
+    })
+    assert r.status_code == 200
+    assert r.json()["data"]["result"]["cleared"] is True
+    assert r.json()["data"]["result"]["op"] == "clear"

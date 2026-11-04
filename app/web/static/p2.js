@@ -189,24 +189,34 @@ $('#alert-list').querySelector('tbody').addEventListener('click', e => {
 
 /* ---------------- 持仓手工校正（覆盖 P1 的只读交易持仓页） ---------------- */
 async function loadTradesWithEdit() {
-  const [p, t] = await Promise.all([api('/api/portfolio'), api('/api/trades?limit=30')]);
+  const showCleared = $('#pos-show-cleared').checked;
+  const [p, t] = await Promise.all([
+    api('/api/portfolio?include_cleared=' + showCleared),
+    api('/api/trades?limit=30'),
+  ]);
   const holdings = p.holdings || [];
-  tableRows($('#trades-holdings'), holdings.map(h => `<tr>
+  const active = holdings.filter(h => !h.is_cleared).length;
+  $('#pos-summary').textContent = `当前持仓 ${active} 只`
+    + (showCleared ? ` · 已清仓 ${holdings.length - active} 只` : '');
+
+  tableRows($('#trades-holdings'), holdings.map(h => `<tr class="${h.is_cleared ? 'cleared' : ''}">
     <td>${esc(h.stock_code)}</td><td>${esc(h.stock_name || '')}</td>
     <td class="num">${finite(h.quantity, 0)}</td><td class="num">${finite(h.avg_cost)}</td>
     <td class="num">${finite(h.current_price)}</td>
     <td class="num ${cls(h.unrealized_profit)}">${signed(h.unrealized_profit)}</td>
-    <td>${h.manual_override
+    <td>${h.is_cleared ? '<span class="tag bad">已清仓</span> ' : ''}${h.manual_override
       ? `<span class="tag bad" title="${esc(h.override_note || '')}">手工锁定</span>`
       : '<span class="tag">交易派生</span>'}</td>
     <td><div class="row-actions">
       <button class="btn ghost" data-pos="edit" data-code="${esc(h.stock_code)}"
         data-qty="${h.quantity}" data-cost="${h.avg_cost}"
         data-name="${esc(h.stock_name || '')}">编辑</button>
+      ${h.is_cleared ? ''
+        : `<button class="btn ghost danger" data-pos="clear" data-code="${esc(h.stock_code)}">清仓</button>`}
       ${h.manual_override
         ? `<button class="btn ghost" data-pos="unlock" data-code="${esc(h.stock_code)}">解除锁定</button>`
         : ''}
-    </div></td></tr>`).join(''), 8, '当前无持仓');
+    </div></td></tr>`).join(''), 8, showCleared ? '暂无持仓记录' : '当前无持仓（可勾选「显示已清仓」）');
 
   tableRows($('#trades-list'), (t.rows || []).map(x => `<tr>
     <td>${esc(String(x.trade_time || '').slice(0, 16))}</td>
@@ -218,23 +228,35 @@ async function loadTradesWithEdit() {
 }
 register('trades', loadTradesWithEdit);
 
-function openPosEdit(btn) {
-  $('#pos-edit-code').textContent = btn.dataset.code;
-  $('#pos-edit-box').dataset.code = btn.dataset.code;
-  $('#pos-qty').value = btn.dataset.qty;
-  $('#pos-cost').value = btn.dataset.cost;
-  $('#pos-name').value = btn.dataset.name;
+function openPosEdit(btn, mode = 'edit') {
+  const box = $('#pos-edit-box');
+  const creating = mode === 'create';
+  box.dataset.mode = mode;
+  box.dataset.code = creating ? '' : btn.dataset.code;
+  $('#pos-edit-title').textContent = creating ? '新增持仓' : '编辑持仓';
+  $('#pos-edit-code').textContent = creating ? '' : btn.dataset.code;
+  $('#pos-code-wrap').classList.toggle('hidden', !creating);
+  $('#pos-code').value = '';
+  $('#pos-qty').value = creating ? '' : btn.dataset.qty;
+  $('#pos-cost').value = creating ? '' : btn.dataset.cost;
+  $('#pos-name').value = creating ? '' : btn.dataset.name;
   $('#pos-reason').value = '';
   $('#pos-confirm').checked = false;
-  $('#pos-hint').textContent = '';
-  $('#pos-edit-box').classList.remove('hidden');
-  $('#pos-edit-box').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  $('#pos-hint').textContent = creating
+    ? '新增需填代码、数量与成本价，保存后该行会被手工锁定' : '';
+  box.classList.remove('hidden');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function savePosEdit() {
   const btn = $('#pos-save');
-  const code = $('#pos-edit-box').dataset.code;
-  if (!code) { showError('请先点击持仓行的「编辑」'); return; }
+  const box = $('#pos-edit-box');
+  const creating = box.dataset.mode === 'create';
+  const code = creating ? $('#pos-code').value.trim() : box.dataset.code;
+  if (!code) { showError('请填股票代码'); return; }
+  if ($('#pos-qty').value === '' || $('#pos-cost').value === '') {
+    showError('数量与成本价都必须填写'); return;
+  }
   const body = {
     op: 'edit', code,
     quantity: Number($('#pos-qty').value),
@@ -245,9 +267,17 @@ async function savePosEdit() {
   const d = await doWrite(btn, '/api/write/portfolio', body,
     { confirmId: 'pos-confirm', hintId: 'pos-hint' });
   if (!d) return;
-  $('#pos-edit-box').classList.add('hidden');
-  delete $('#pos-edit-box').dataset.code;
+  box.classList.add('hidden');
+  delete box.dataset.code;
   await loadTradesWithEdit();
+}
+
+async function clearPos(btn) {
+  const code = btn.dataset.code;
+  if (!window.confirm(`确定把 ${code} 标记为已清仓？数量会置 0 并锁定该行。`)) return;
+  const d = await doWrite(btn, '/api/write/portfolio',
+    { op: 'clear', code, reason: '页面手工清仓' });
+  if (d) await loadTradesWithEdit();
 }
 
 async function unlockPos(btn) {
@@ -268,9 +298,13 @@ async function rebuildPos() {
 $('#trades-holdings').querySelector('tbody').addEventListener('click', e => {
   const btn = e.target.closest('button[data-pos]');
   if (!btn) return;
-  if (btn.dataset.pos === 'edit') openPosEdit(btn);
-  else if (btn.dataset.pos === 'unlock') unlockPos(btn);
+  const op = btn.dataset.pos;
+  if (op === 'edit') openPosEdit(btn);
+  else if (op === 'unlock') unlockPos(btn);
+  else if (op === 'clear') clearPos(btn);
 });
+$('#pos-add').addEventListener('click', () => openPosEdit(null, 'create'));
+$('#pos-show-cleared').addEventListener('change', loadTradesWithEdit);
 $('#pos-save').addEventListener('click', savePosEdit);
 $('#pos-cancel').addEventListener('click', () => $('#pos-edit-box').classList.add('hidden'));
 $('#pos-rebuild').addEventListener('click', rebuildPos);

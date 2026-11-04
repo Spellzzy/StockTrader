@@ -46,7 +46,7 @@ def client(monkeypatch):
     )
     monkeypatch.setattr(
         "app.services.portfolio_service.PortfolioService.get_portfolio_with_market_data",
-        lambda self: [{"stock_code": "sh600519", "stock_name": "贵州茅台",
+        lambda self, **kw: [{"stock_code": "sh600519", "stock_name": "贵州茅台",
                        "quantity": 100, "avg_cost": 1400.0,
                        "current_price": 1450.0, "unrealized_profit": 5000.0}],
     )

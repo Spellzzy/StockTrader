@@ -88,6 +88,11 @@ input[type=text]:focus { border-color: var(--accent); }
 .row-actions { display: flex; gap: 6px; }
 .row-actions .btn { padding: 4px 10px; font-size: 12px; }
 .result-box.ok { border-color: rgba(48,164,108,.5); }
+.toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  color: var(--text-dim); cursor: pointer; }
+.toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
+.tag.bad { color: var(--warn); border-color: rgba(229,160,72,.45); }
+tr.cleared { opacity: .68; }
 
 .chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   min-height: 220px; display: flex; align-items: center; justify-content: center; padding: 16px; }

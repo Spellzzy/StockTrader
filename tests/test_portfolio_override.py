@@ -117,3 +117,42 @@ def test_market_data_view_exposes_lock_flag(service):
 
     assert holdings[0]["manual_override"] is True
     assert "校正" in (holdings[0]["override_note"] or "")
+
+
+def test_clear_holding(service):
+    result = service.clear_holding("sh600519", reason="卖光了")
+
+    assert result["cleared"] is True
+    h = service.get_holding("sh600519")
+    assert h.quantity == 0
+    assert h.total_cost == 0.0
+    assert h.manual_override is True
+    assert "手工清仓" in h.override_note
+
+    with pytest.raises(ValueError, match="无法清仓"):
+        service.clear_holding("sz999999")
+
+
+def test_include_cleared_shows_cleared_rows_without_quotes(
+    service, db_session, monkeypatch
+):
+    add_trade(db_session, "sz000001", "buy", 5.0, 100, day=3)
+    service.rebuild_portfolio()
+    service.clear_holding("sh600519")
+
+    calls = []
+    monkeypatch.setattr(
+        "app.data.stock_data_client.StockDataClient.quote",
+        lambda self, *codes: calls.append(codes) or {},
+    )
+
+    rows = service.get_portfolio_with_market_data(include_cleared=True)
+    assert len(rows) == 2
+    cleared = next(r for r in rows if r["stock_code"] == "sh600519")
+    assert cleared["is_cleared"] is True
+    assert cleared["market_value"] == 0
+    assert cleared["current_price"] == 0
+
+    # 只为有持仓的代码拉行情，已清仓行不产生额外请求
+    assert len(calls) == 1 and "sh600519" not in calls[0]
+    assert len(service.get_portfolio_with_market_data()) == 1
