@@ -699,6 +699,49 @@ async def write_paper(req: PaperWrite) -> dict:
     return await _write(req, "paper", execute)
 
 
+# ==================== 持仓手工校正 ====================
+
+class PortfolioWrite(WriteBase):
+    op: str = Field("edit", pattern="^(edit|unlock|rebuild)$")
+    code: str = ""
+    quantity: int | None = Field(None, ge=0)
+    avg_cost: float | None = Field(None, ge=0)
+    name: str | None = None
+    reason: str = ""
+
+
+@app.post("/api/write/portfolio")
+async def write_portfolio(req: PortfolioWrite) -> dict:
+    """手工校正持仓 / 解除锁定 / 从交易全量重建
+
+    - edit: 改数量与成本价，并把该行标记为 manual_override（重建时跳过）
+    - unlock: 解除锁定并立即按交易记录恢复
+    - rebuild: 强制全量重建，会清除所有手工校正（危险操作，必须确认）
+    """
+    from app.services.portfolio_service import PortfolioService
+
+    def execute():
+        service = PortfolioService()
+        if req.op == "rebuild":
+            service.rebuild_portfolio(force=True)
+            return {"op": "rebuild", "locked_cleared": True}
+
+        if not req.code:
+            raise ValueError("该操作需要股票代码 code")
+
+        if req.op == "edit":
+            if req.quantity is None and req.avg_cost is None and req.name is None:
+                raise ValueError("校正至少需要 quantity / avg_cost / name 之一")
+            return {"op": "edit", **service.update_holding(
+                req.code, quantity=req.quantity, avg_cost=req.avg_cost,
+                stock_name=req.name, reason=req.reason,
+            )}
+
+        return {"op": "unlock", **service.unlock_holding(req.code)}
+
+    return await _write(req, "portfolio", execute)
+
+
 # 静态资源挂在最后，避免覆盖 API 路由
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

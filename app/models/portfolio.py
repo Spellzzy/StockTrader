@@ -1,7 +1,7 @@
 """持仓记录模型"""
 
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, DateTime, Text
+from sqlalchemy import String, Float, Integer, DateTime, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -38,6 +38,17 @@ class PortfolioRecord(Base):
 
     # 备注
     note: Mapped[str] = mapped_column(Text, nullable=True, comment="备注")
+
+    # 手工校正（两套真相）：锁定后 rebuild_portfolio 会跳过这一行
+    manual_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, comment="是否手工校正并锁定"
+    )
+    override_note: Mapped[str] = mapped_column(
+        Text, nullable=True, comment="校正留痕：时间 / 原值→新值 / 理由"
+    )
+    override_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=True, comment="最后一次手工校正时间"
+    )
 
     # 元数据
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)

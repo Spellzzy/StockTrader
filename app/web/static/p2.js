@@ -1,8 +1,11 @@
-/* P2 页面：录入交易 / 预警 / 模拟盘 / 设置
-   所有写操作：勾选确认 + 幂等键 + 明确结果提示。 */
+/* P2 页面：录入交易 / 预警 / 模拟盘 / 设置 + 持仓手工校正
+   所有写操作：勾选确认 + 幂等键 + 明确结果提示。
+   包在 IIFE 里，避免与 app.js / p1.js 的顶层 const 重名。 */
 
+(() => {
 const ST2 = window.ST;
-const { $, api, post, fmt, signed, cls, esc, card, showError, clearError, register } = ST2;
+const { $, api, post, fmt, signed, cls, esc, card,
+        showError, clearError, register, finite, tableRows } = ST2;
 
 function clientId(btn) {
   if (!btn.dataset.cid) {
@@ -183,3 +186,92 @@ $('#alert-list').querySelector('tbody').addEventListener('click', e => {
   const btn = e.target.closest('button[data-op]');
   if (btn) rowAction(btn);
 });
+
+/* ---------------- 持仓手工校正（覆盖 P1 的只读交易持仓页） ---------------- */
+async function loadTradesWithEdit() {
+  const [p, t] = await Promise.all([api('/api/portfolio'), api('/api/trades?limit=30')]);
+  const holdings = p.holdings || [];
+  tableRows($('#trades-holdings'), holdings.map(h => `<tr>
+    <td>${esc(h.stock_code)}</td><td>${esc(h.stock_name || '')}</td>
+    <td class="num">${finite(h.quantity, 0)}</td><td class="num">${finite(h.avg_cost)}</td>
+    <td class="num">${finite(h.current_price)}</td>
+    <td class="num ${cls(h.unrealized_profit)}">${signed(h.unrealized_profit)}</td>
+    <td>${h.manual_override
+      ? `<span class="tag bad" title="${esc(h.override_note || '')}">手工锁定</span>`
+      : '<span class="tag">交易派生</span>'}</td>
+    <td><div class="row-actions">
+      <button class="btn ghost" data-pos="edit" data-code="${esc(h.stock_code)}"
+        data-qty="${h.quantity}" data-cost="${h.avg_cost}"
+        data-name="${esc(h.stock_name || '')}">编辑</button>
+      ${h.manual_override
+        ? `<button class="btn ghost" data-pos="unlock" data-code="${esc(h.stock_code)}">解除锁定</button>`
+        : ''}
+    </div></td></tr>`).join(''), 8, '当前无持仓');
+
+  tableRows($('#trades-list'), (t.rows || []).map(x => `<tr>
+    <td>${esc(String(x.trade_time || '').slice(0, 16))}</td>
+    <td>${esc(x.stock_code)}</td>
+    <td>${x.action === 'buy' ? '<span class="up">买入</span>' : '<span class="down">卖出</span>'}</td>
+    <td class="num">${finite(x.price)}</td><td class="num">${finite(x.quantity, 0)}</td>
+    <td class="num ${cls(x.profit)}">${x.profit === null || x.profit === undefined ? '-' : signed(x.profit)}</td>
+    <td>${esc(x.strategy || '')}</td></tr>`).join(''), 7, '暂无交易记录');
+}
+register('trades', loadTradesWithEdit);
+
+function openPosEdit(btn) {
+  $('#pos-edit-code').textContent = btn.dataset.code;
+  $('#pos-edit-box').dataset.code = btn.dataset.code;
+  $('#pos-qty').value = btn.dataset.qty;
+  $('#pos-cost').value = btn.dataset.cost;
+  $('#pos-name').value = btn.dataset.name;
+  $('#pos-reason').value = '';
+  $('#pos-confirm').checked = false;
+  $('#pos-hint').textContent = '';
+  $('#pos-edit-box').classList.remove('hidden');
+  $('#pos-edit-box').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function savePosEdit() {
+  const btn = $('#pos-save');
+  const code = $('#pos-edit-box').dataset.code;
+  if (!code) { showError('请先点击持仓行的「编辑」'); return; }
+  const body = {
+    op: 'edit', code,
+    quantity: Number($('#pos-qty').value),
+    avg_cost: Number($('#pos-cost').value),
+    name: $('#pos-name').value.trim(),
+    reason: $('#pos-reason').value.trim(),
+  };
+  const d = await doWrite(btn, '/api/write/portfolio', body,
+    { confirmId: 'pos-confirm', hintId: 'pos-hint' });
+  if (!d) return;
+  $('#pos-edit-box').classList.add('hidden');
+  delete $('#pos-edit-box').dataset.code;
+  await loadTradesWithEdit();
+}
+
+async function unlockPos(btn) {
+  const code = btn.dataset.code;
+  if (!window.confirm(`解除 ${code} 的手工锁定？会立即按交易记录恢复该持仓。`)) return;
+  const d = await doWrite(btn, '/api/write/portfolio', { op: 'unlock', code });
+  if (d) await loadTradesWithEdit();
+}
+
+async function rebuildPos() {
+  if (!window.confirm('确定从交易记录全量重建？所有手工校正都会被清除且不可恢复。')) return;
+  const btn = $('#pos-rebuild');
+  const d = await doWrite(btn, '/api/write/portfolio', { op: 'rebuild' },
+    { hintId: 'pos-rebuild-hint' });
+  if (d) await loadTradesWithEdit();
+}
+
+$('#trades-holdings').querySelector('tbody').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-pos]');
+  if (!btn) return;
+  if (btn.dataset.pos === 'edit') openPosEdit(btn);
+  else if (btn.dataset.pos === 'unlock') unlockPos(btn);
+});
+$('#pos-save').addEventListener('click', savePosEdit);
+$('#pos-cancel').addEventListener('click', () => $('#pos-edit-box').classList.add('hidden'));
+$('#pos-rebuild').addEventListener('click', rebuildPos);
+})();

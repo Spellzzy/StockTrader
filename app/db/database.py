@@ -81,6 +81,32 @@ def ensure_alert_cooldown_column(engine=None):
     return True
 
 
+def ensure_portfolio_override_columns(engine=None):
+    """幂等为 portfolio 表补上手工校正列
+
+    create_all 不会给已存在的表加列，而用户库通常不是新建的，
+    所以运行时必须显式补列（与 alerts.cooldown_minutes 同一套做法）。
+    """
+    from sqlalchemy import inspect, text
+
+    engine = engine or get_engine()
+    columns = {c["name"] for c in inspect(engine).get_columns("portfolio")}
+    statements = []
+    if "manual_override" not in columns:
+        statements.append("ALTER TABLE portfolio ADD COLUMN manual_override BOOLEAN DEFAULT 0")
+    if "override_note" not in columns:
+        statements.append("ALTER TABLE portfolio ADD COLUMN override_note TEXT")
+    if "override_at" not in columns:
+        statements.append("ALTER TABLE portfolio ADD COLUMN override_at DATETIME")
+
+    if not statements:
+        return False
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))
+    return True
+
+
 def init_db():
     """初始化数据库（创建所有表）"""
     # 导入所有模型以确保它们注册到 Base
@@ -88,3 +114,4 @@ def init_db():
     engine = get_engine()
     Base.metadata.create_all(engine)
     ensure_alert_cooldown_column(engine)
+    ensure_portfolio_override_columns(engine)

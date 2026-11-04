@@ -157,10 +157,33 @@
 
     <!-- 交易持仓 -->
     <section id="panel-trades" class="panel hidden">
-      <div class="section-head"><h2>当前持仓</h2></div>
+      <div class="section-head"><h2>当前持仓</h2>
+        <span class="dim">手工校正的行会被锁定，普通「重建持仓」不会再覆盖它</span></div>
+
+      <div id="pos-edit-box" class="result-box hidden">
+        <h3>编辑持仓 · <span id="pos-edit-code"></span></h3>
+        <div class="form-grid">
+          <label>数量（股）<input id="pos-qty" type="number" min="0"></label>
+          <label>成本价<input id="pos-cost" type="number" step="0.01" min="0"></label>
+          <label>名称<input id="pos-name" type="text"></label>
+          <label>校正理由<input id="pos-reason" type="text" placeholder="如：补录历史遗漏"></label>
+        </div>
+        <label class="confirm"><input id="pos-confirm" type="checkbox"> 确认执行手工校正（该行将被锁定）</label>
+        <div class="toolbar">
+          <button id="pos-save" class="btn primary">保存校正</button>
+          <button id="pos-cancel" class="btn ghost">取消</button>
+          <span id="pos-hint" class="dim"></span>
+        </div>
+      </div>
+
       <div class="table-wrap"><table id="trades-holdings">
-        <thead><tr><th>代码</th><th>名称</th><th class="num">持仓</th><th class="num">成本</th><th class="num">现价</th><th class="num">浮动盈亏</th></tr></thead>
+        <thead><tr><th>代码</th><th>名称</th><th class="num">持仓</th><th class="num">成本</th>
+          <th class="num">现价</th><th class="num">浮动盈亏</th><th>来源</th><th>操作</th></tr></thead>
         <tbody></tbody></table></div>
+      <div class="toolbar">
+        <button id="pos-rebuild" class="btn ghost danger">从交易全量重建（清除所有手工校正）</button>
+        <span id="pos-rebuild-hint" class="dim"></span>
+      </div>
       <div class="section-head"><h2>最近交易</h2></div>
       <div class="table-wrap"><table id="trades-list">
         <thead><tr><th>时间</th><th>代码</th><th>方向</th><th class="num">价格</th><th class="num">数量</th><th class="num">盈亏</th><th>策略</th></tr></thead>

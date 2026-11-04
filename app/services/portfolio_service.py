@@ -1,5 +1,6 @@
 """持仓管理服务"""
 
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_session
 from app.models.portfolio import PortfolioRecord
+from app.models.stock import Stock, normalize_stock_code
 from app.models.trade import Trade
 from app.data.stock_data_client import StockDataClient
 
@@ -24,11 +26,21 @@ class PortfolioService:
             self._session = get_session()
         return self._session
 
-    def rebuild_portfolio(self):
-        """根据交易记录重建所有持仓（全量重算）"""
-        # 清除现有持仓
+    def rebuild_portfolio(self, force: bool = False):
+        """根据交易记录重建所有持仓（全量重算）
+
+        Args:
+            force: True 时清掉所有手工校正标记并按交易记录全量重算
+                   （默认 False：保留 manual_override=True 的行，不覆盖手工校正）
+        """
         existing = self.session.execute(select(PortfolioRecord)).scalars().all()
+
+        # 手工锁定的行是"第二套真相"，重建时必须绕开，否则校正会被悄悄抹掉
+        locked_codes: set[str] = set()
         for p in existing:
+            if p.manual_override and not force:
+                locked_codes.add(p.stock_code)
+                continue
             self.session.delete(p)
 
         # 查询所有交易记录（按时间排序）
@@ -49,6 +61,8 @@ class PortfolioService:
 
         # 逐只股票计算持仓
         for code, code_trades in stock_trades.items():
+            if code in locked_codes:
+                continue  # 手工校正的行保持原样
             record = PortfolioRecord(
                 stock_code=code,
                 stock_name=code_trades[0].stock_name or "",
@@ -117,6 +131,118 @@ class PortfolioService:
             select(PortfolioRecord).where(PortfolioRecord.stock_code == stock_code)
         ).scalar_one_or_none()
 
+    # ==================== 手工校正（两套真相） ====================
+
+    def update_holding(
+        self,
+        stock_code: str,
+        quantity: Optional[int] = None,
+        avg_cost: Optional[float] = None,
+        stock_name: Optional[str] = None,
+        reason: str = "",
+    ) -> dict:
+        """手工校正一条持仓：改数量 / 成本价 / 名称，并锁定该行
+
+        锁定后 `rebuild_portfolio()` 会跳过它，校正值不会被交易记录覆盖。
+        校正前后值与理由写入 override_note，另有 Web 层 web_writes 幂等日志。
+        """
+        code = normalize_stock_code(stock_code)
+        if quantity is not None and quantity < 0:
+            raise ValueError("持仓数量不能为负")
+        if avg_cost is not None and avg_cost < 0:
+            raise ValueError("成本价不能为负")
+
+        record = self.get_holding(code)
+        created = record is None
+        if record is None:
+            if quantity is None or avg_cost is None:
+                raise ValueError(
+                    f"没有 {code} 的持仓记录；手工新增必须同时提供 quantity 与 avg_cost"
+                )
+            record = PortfolioRecord(
+                stock_code=code,
+                stock_name=stock_name or "",
+                market=Stock.parse_market(code),
+                quantity=0, avg_cost=0.0, total_cost=0.0,
+                realized_profit=0.0, total_commission=0.0, total_tax=0.0,
+                buy_count=0, sell_count=0,
+            )
+            self.session.add(record)
+
+        before = {
+            "quantity": record.quantity,
+            "avg_cost": record.avg_cost,
+            "total_cost": record.total_cost,
+            "stock_name": record.stock_name,
+        }
+        changes = []
+        if quantity is not None and quantity != record.quantity:
+            changes.append(f"数量 {record.quantity}→{quantity}")
+            record.quantity = quantity
+        if avg_cost is not None and avg_cost != record.avg_cost:
+            changes.append(f"成本 {record.avg_cost:.2f}→{avg_cost:.2f}")
+            record.avg_cost = avg_cost
+        if stock_name is not None and stock_name != record.stock_name:
+            changes.append(f"名称 {record.stock_name or ''}→{stock_name}")
+            record.stock_name = stock_name
+
+        # total_cost 必须与 quantity * avg_cost 保持一致，否则汇总会自相矛盾
+        record.total_cost = record.quantity * record.avg_cost
+        record.manual_override = True
+        record.override_at = datetime.now()
+        record.override_note = (
+            f"{record.override_at:%Y-%m-%d %H:%M} | "
+            f"{'手工新增' if created else '; '.join(changes) or '仅锁定'} | "
+            f"理由: {reason or '未填写'}"
+        )
+        self.session.commit()
+
+        return {
+            "stock_code": code,
+            "created": created,
+            "before": before,
+            "after": {
+                "quantity": record.quantity,
+                "avg_cost": record.avg_cost,
+                "total_cost": record.total_cost,
+                "stock_name": record.stock_name,
+            },
+            "manual_override": True,
+            "override_note": record.override_note,
+        }
+
+    def unlock_holding(self, stock_code: str) -> dict:
+        """解除手工锁定，并立即按交易记录恢复派生值"""
+        code = normalize_stock_code(stock_code)
+        record = self.get_holding(code)
+        if not record:
+            raise ValueError(f"没有 {code} 的持仓记录")
+
+        record.manual_override = False
+        record.override_note = (
+            f"{datetime.now():%Y-%m-%d %H:%M} | 已解除锁定，按交易记录重建"
+        )
+        self.session.commit()
+        self.rebuild_portfolio()
+
+        restored = self.get_holding(code)
+        return {
+            "stock_code": code,
+            "restored": {
+                "quantity": restored.quantity if restored else 0,
+                "avg_cost": restored.avg_cost if restored else 0.0,
+            },
+        }
+
+    def locked_codes(self) -> list[str]:
+        """返回所有被手工锁定的股票代码"""
+        records = self.session.execute(
+            select(PortfolioRecord.stock_code).where(
+                PortfolioRecord.manual_override.is_(True)
+            )
+        ).scalars().all()
+        return list(records)
+
     def get_portfolio_with_market_data(self) -> list[dict]:
         """获取持仓列表 + 实时行情数据"""
         holdings = self.get_portfolio()
@@ -143,6 +269,9 @@ class PortfolioService:
                 "sell_count": h.sell_count,
                 "realized_profit": h.realized_profit,
                 "first_buy_time": h.first_buy_time,
+                "manual_override": bool(h.manual_override),
+                "override_note": h.override_note,
+                "override_at": h.override_at,
             }
 
             # 尝试获取实时价格

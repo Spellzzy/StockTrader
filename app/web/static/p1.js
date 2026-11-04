@@ -1,17 +1,14 @@
 /* P1 页面：统计 / 回测 / 策略实验室 / AI 预测 / 交易持仓
-   依赖 app.js 暴露的 window.ST 公共能力，无框架、无构建。 */
+   依赖 app.js 暴露的 window.ST 公共能力，无框架、无构建。
 
+   注意：三个脚本都是经典 script，共享全局词法环境；顶层 const 重名会抛
+   "Identifier has already been declared"，所以每个文件都包在 IIFE 里。 */
+
+(() => {
 const ST = window.ST;
-const { $, api, post, fmt, signed, cls, esc, emptyRow, card, sparkline, showError, clearError, register } = ST;
+const { $, api, post, fmt, signed, cls, esc, card, sparkline,
+        showError, clearError, register, finite, tableRows } = ST;
 
-function finite(v, digits = 2) {
-  const n = Number(v);
-  return Number.isFinite(n) ? fmt(n, digits) : '-';
-}
-function tableRows(table, rows, cols, emptyText) {
-  if (!rows || !rows.length) { emptyRow(table, cols, emptyText || '暂无数据'); return; }
-  table.querySelector('tbody').innerHTML = rows;
-}
 function busy(el, text, fn) {
   const original = el.textContent;
   el.disabled = true; el.textContent = text;
@@ -256,3 +253,4 @@ $('#lab-signals-btn').addEventListener('click', loadSignals);
 $('#lab-optimize-btn').addEventListener('click', runOptimize);
 $('#predict-btn').addEventListener('click', runPredict);
 $('#predict-code').addEventListener('keydown', e => { if (e.key === 'Enter') runPredict(); });
+})();

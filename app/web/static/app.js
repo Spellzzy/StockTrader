@@ -193,6 +193,14 @@ const loaders = { overview: loadOverview, market: loadQuotes, reports: loadRepor
 window.ST = {
   $, api, post, fmt, signed, cls, esc, emptyRow, card, sparkline,
   setStatus, showError, clearError,
+  finite(v, digits = 2) {
+    const n = Number(v);
+    return Number.isFinite(n) ? fmt(n, digits) : '-';
+  },
+  tableRows(table, rows, cols, emptyText) {
+    if (!rows || !rows.length) { emptyRow(table, cols, emptyText || '暂无数据'); return; }
+    table.querySelector('tbody').innerHTML = rows;
+  },
   register(name, loader) { loaders[name] = loader; },
 };
 
