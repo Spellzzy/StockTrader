@@ -1,6 +1,8 @@
 /* Stock Trader AI 本地 Web UI — 原生 JS，无构建、无 CDN */
 
-const $ = (id) => document.getElementById(id);
+/* 兼容两种调用：$('id') 与 $('#id') —— 历史上两种写法都存在，
+   getElementById 对 '#id' 永远返回 null，这里统一剥掉前缀。 */
+const $ = (sel) => document.getElementById(String(sel).replace(/^#/, ''));
 let activeTab = 'overview';
 
 function setStatus(online, text) {
