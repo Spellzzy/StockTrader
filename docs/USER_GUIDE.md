@@ -1528,6 +1528,13 @@ alembic stamp head
 
 ### Q: 怎么把策略信号变成可执行的订单？
 
+> **⏸ 该功能当前冻结，不对外开放。** 执行层代码与测试保留在仓库里，
+> 但默认不会挂到 CLI（`stock-ai order` 不可见）。需要恢复时设置
+> `STOCK_AI_FEATURES__ORDER_ENABLED=true` 或在 `config.yaml` 里打开
+> `features.order_enabled`。当前精力放在策略有效性与使用体验上。
+
+以下内容是解冻后的用法说明。
+
 `stock-ai order` 是**半自动执行层**：默认只生成草稿，绝不自动真实下单。
 
 ```bash

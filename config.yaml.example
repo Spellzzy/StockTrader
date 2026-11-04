@@ -114,7 +114,12 @@ alerts:
   watch_interval: 30         # 看盘模式刷新间隔 (秒)
   cooldown_minutes: 30       # 可重复触发的预警冷却时间（避免每轮重复推送，0=不冷却）
 
+# 功能开关
+features:
+  order_enabled: false        # 订单执行层暂不开放；true 才会在 CLI 挂载 stock-ai order
+
 # 券商通道 / 订单编排（默认只出草稿，绝不自动真实下单）
+# 注意：整个执行层当前处于「冻结」状态，见 features.order_enabled
 broker:
   enabled: false             # kill switch：false 时 --live 一律被拒绝
   name: "manual"             # manual=人工确认 / mock=影子 / paper=模拟盘

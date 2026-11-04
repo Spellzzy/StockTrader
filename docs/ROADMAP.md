@@ -68,7 +68,7 @@
 | 多标的组合回测 | ✅ | `BacktestService.run_portfolio` + `stock-ai bt-pf <codes>`（等权分配，合并权益曲线） |
 | 选股结果直接送回测 | ✅ | `stock-ai sn --backtest`（对买入命中做组合回测） |
 | 参数寻优（网格搜索） | ⬜ 未做 | 下一步 |
-| 执行层 / 订单编排（阶段 0+1） | ✅ | `stock-ai order *`：Manual 人工确认通道，默认只出草稿，绝不自动真实下单 |
+| 执行层 / 订单编排（阶段 0+1） | ⏸ **已实现，冻结不开放** | 代码与测试保留，CLI 入口由 `features.order_enabled=false` 关闭；当前转去优化策略与使用体验 |
 | QMT / Ptrade 真实通道（阶段 3） | ⬜ 未做 | 需券商量化权限与测试环境，未经验证不接 |
 
 ### 执行层（半自动）已落地内容

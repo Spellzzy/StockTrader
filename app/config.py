@@ -57,6 +57,10 @@ DEFAULT_CONFIG = {
     "alerts": {
         "cooldown_minutes": 30,      # 可重复触发的预警冷却时间（0=每轮都推）
     },
+    "features": {
+        # 订单执行层已实现但暂不开放；设为 true 才会在 CLI 挂载 stock-ai order
+        "order_enabled": False,
+    },
     "broker": {
         "enabled": False,            # kill switch：默认拒绝真实提交，只出草稿
         "name": "manual",            # manual（人工确认）/ paper

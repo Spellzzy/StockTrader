@@ -74,7 +74,13 @@ app.add_typer(backtest_app, name="backtest")
 app.add_typer(notify_app, name="notify")
 app.add_typer(digest_app, name="digest")
 app.add_typer(paper_app, name="paper")
-app.add_typer(order_app, name="order")
+
+# 订单执行层已实现但默认冻结：代码与测试保留，只有显式打开 features.order_enabled
+# 才把 order 命令组挂到顶层，避免误用，也方便随时恢复。
+from app.config import get_config
+
+if get_config().get("features", {}).get("order_enabled", False):
+    app.add_typer(order_app, name="order")
 
 
 
