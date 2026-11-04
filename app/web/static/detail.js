@@ -20,13 +20,8 @@
     return `<div class="detail-kv">${rows || '<div class="dim">暂无数据</div>'}</div>`;
   }
 
-  function render(d) {
-    currentData = d;
+  function overviewHtml(d) {
     const q = d.quote || {}, tech = d.tech || {}, s = d.stock || {}, h = d.holding;
-    $('detail-title').textContent = (d.name || d.code) + ' · ' + d.code;
-    $('detail-sub').textContent = '更新于 '
-      + String(d.generated_at || '').replace('T', ' ') + ' · 数据仅供参考';
-
     const price = q.price || 0;
     const chg = q.change_percent || 0;
     const cards = [
@@ -69,7 +64,7 @@
         <td class="num ${cls(t.profit)}">${t.profit === null || t.profit === undefined ? '-' : signed(t.profit)}</td>
       </tr>`).join('')}</tbody></table>` : '<div class="result-box dim">暂无该股交易记录</div>';
 
-    $('detail-body').innerHTML = `
+    return `
       <h3>实时报价</h3><div class="cards">${cards}</div>
       <h3>近 ${closes.length} 个交易日收盘走势</h3>${chart}
       <h3>技术指标（基于上述收盘价）</h3>${kv([
@@ -88,9 +83,118 @@
         ['板块', esc(s.sector || '')], ['自选备注', esc(s.watch_note || '')],
       ]) : ''}
       ${holdingBlock}
-      <h3>最近 5 笔交易</h3>${tradeTable}
-      <h3>公司资料</h3><div id="detail-profile-box" class="dim">点底部「公司资料」按需加载</div>`;
+      <h3>最近 5 笔交易</h3>${tradeTable}`;
   }
+
+  /* ---------------- 内部 tab：概览 / 资金流 / 新闻 / 公司资料 ---------------- */
+  let paneLoaded = { overview: true, fund: false, news: false, profile: false };
+
+  function pane(name) {
+    return $('detail-body').querySelector('.detail-pane[data-pane="' + name + '"]');
+  }
+
+  function render(d) {
+    currentData = d;
+    paneLoaded = { overview: true, fund: false, news: false, profile: false };
+    $('detail-title').textContent = (d.name || d.code) + ' · ' + d.code;
+    $('detail-sub').textContent = '更新于 '
+      + String(d.generated_at || '').replace('T', ' ') + ' · 数据仅供参考';
+    $('detail-body').innerHTML = `
+      <div class="detail-tabs">
+        <button type="button" class="detail-tab active" data-pane="overview">概览</button>
+        <button type="button" class="detail-tab" data-pane="fund">资金流</button>
+        <button type="button" class="detail-tab" data-pane="news">新闻</button>
+        <button type="button" class="detail-tab" data-pane="profile">公司资料</button>
+      </div>
+      <div class="detail-pane" data-pane="overview">${overviewHtml(d)}</div>
+      <div class="detail-pane hidden" data-pane="fund"></div>
+      <div class="detail-pane hidden" data-pane="news"></div>
+      <div class="detail-pane hidden" data-pane="profile"></div>`;
+    $('detail-body').querySelectorAll('.detail-tab').forEach(btn =>
+      btn.addEventListener('click', () => switchPane(btn.dataset.pane)));
+  }
+
+  function switchPane(name) {
+    const body = $('detail-body');
+    body.querySelectorAll('.detail-tab').forEach(b =>
+      b.classList.toggle('active', b.dataset.pane === name));
+    body.querySelectorAll('.detail-pane').forEach(p =>
+      p.classList.toggle('hidden', p.dataset.pane !== name));
+    if (paneLoaded[name]) return;
+    const loader = paneLoaders[name];
+    if (loader) loader();
+  }
+
+  function money(v) {
+    if (v === null || v === undefined || !Number.isFinite(Number(v))) return '-';
+    const n = Number(v), abs = Math.abs(n);
+    if (abs >= 1e8) return (n / 1e8).toFixed(2) + ' 亿';
+    if (abs >= 1e4) return (n / 1e4).toFixed(1) + ' 万';
+    return n.toFixed(0);
+  }
+
+  function loading(name, text) {
+    const el = pane(name);
+    if (el) el.innerHTML = '<div class="detail-loading"><span class="spinner"></span> '
+      + esc(text) + '…</div>';
+  }
+
+  async function loadFund() {
+    loading('fund', '正在获取资金流向');
+    try {
+      const d = await api('/api/stock/fund?code=' + encodeURIComponent(currentCode) + '&days=10');
+      const rows = d.rows || [];
+      const el = pane('fund');
+      if (!el) return;
+      if (d.error) { el.innerHTML = '<div class="quality-warn">资金流获取失败：' + esc(d.error) + '</div>'; return; }
+      if (!rows.length) { el.innerHTML = '<div class="result-box dim">暂无资金流向数据</div>'; return; }
+      const total = rows.reduce((acc, r) => acc + (Number(r.main_net_in) || 0), 0);
+      const max = Math.max(1, ...rows.map(r => Math.abs(Number(r.main_net_in) || 0)));
+      el.innerHTML = `
+        <h3>近 ${rows.length} 日主力净流入 · 合计 <span class="${cls(total)}">${money(total)}</span></h3>
+        <table class="detail-table flow-table">
+          <thead><tr><th>日期</th><th class="num">收盘价</th>
+            <th>主力净流入</th><th class="num">散户/均价净流入</th></tr></thead>
+          <tbody>${rows.map(r => {
+            const v = Number(r.main_net_in) || 0;
+            const w = Math.min(100, Math.abs(v) / max * 100).toFixed(0);
+            return `<tr><td>${esc(r.date)}</td><td class="num">${num(r.price)}</td>
+              <td><div class="flow-bar ${v >= 0 ? 'up' : 'down'}" style="width:${w}%"></div>
+                <span class="${cls(v)}">${money(v)}</span></td>
+              <td class="num ${cls(r.avg_in)}">${money(r.avg_in)}</td></tr>`;
+          }).join('')}</tbody></table>
+        <div class="dim">正值代表主力净流入；数据来自 stock-data，仅供参考。</div>`;
+      paneLoaded.fund = true;
+    } catch (e) {
+      const el = pane('fund');
+      if (el) el.innerHTML = '<div class="quality-warn">资金流加载失败：' + esc(String(e.message || e)) + '</div>';
+    }
+  }
+
+  async function loadNews() {
+    loading('news', '正在获取个股新闻');
+    try {
+      const d = await api('/api/stock/news?code=' + encodeURIComponent(currentCode) + '&size=15');
+      const rows = d.rows || [];
+      const el = pane('news');
+      if (!el) return;
+      if (d.error) { el.innerHTML = '<div class="quality-warn">新闻获取失败：' + esc(d.error) + '</div>'; return; }
+      if (!rows.length) { el.innerHTML = '<div class="result-box dim">暂无相关新闻</div>'; return; }
+      el.innerHTML = `<h3>最新 ${rows.length} 条${d.total ? ' · 共 ' + fmt(d.total, 0) + ' 条' : ''}</h3>
+        <div class="news-list">${rows.map(n => `
+          <a class="news-item" href="${esc(n.url || '#')}" target="_blank" rel="noopener noreferrer">
+            <div class="news-title">${esc(n.title || '(无标题)')}</div>
+            <div class="news-meta dim">${esc(n.time || '')}${n.source ? ' · ' + esc(n.source) : ''}</div>
+            ${n.summary ? '<div class="news-summary dim">' + esc(n.summary) + '</div>' : ''}
+          </a>`).join('')}</div>`;
+      paneLoaded.news = true;
+    } catch (e) {
+      const el = pane('news');
+      if (el) el.innerHTML = '<div class="quality-warn">新闻加载失败：' + esc(String(e.message || e)) + '</div>';
+    }
+  }
+
+  const paneLoaders = { fund: loadFund, news: loadNews, profile: () => loadProfile() };
 
   async function open(code) {
     code = String(code || '').trim();
@@ -184,17 +288,18 @@
 
   async function loadProfile() {
     if (!currentCode) return;
-    const box = $('detail-profile-box');
+    const box = pane('profile');
     if (!box) return;
-    box.innerHTML = '<span class="spinner"></span> 正在加载公司资料…';
+    box.innerHTML = '<div class="detail-loading"><span class="spinner"></span> 正在加载公司资料…</div>';
     try {
       const d = await api('/api/stock/profile?code=' + encodeURIComponent(currentCode));
       const p = d.profile || {};
-      if (p.error) { box.textContent = '公司资料获取失败：' + p.error; return; }
-      box.className = '';
+      if (p.error) { box.innerHTML = '<div class="quality-warn">公司资料获取失败：' + esc(p.error) + '</div>'; return; }
       box.innerHTML = renderProfile(p);
+      paneLoaded.profile = true;
     } catch (e) {
-      box.textContent = '公司资料加载失败：' + String(e.message || e);
+      box.innerHTML = '<div class="quality-warn">公司资料加载失败：'
+        + esc(String(e.message || e)) + '</div>';
     }
   }
 
@@ -215,7 +320,7 @@
     if (e.target.id === 'stock-detail') close();
   });
   $('detail-refresh').addEventListener('click', () => open(currentCode));
-  $('detail-profile').addEventListener('click', loadProfile);
+  $('detail-profile').addEventListener('click', () => switchPane('profile'));
   $('detail-goto-market').addEventListener('click', () => goto('market', ['codes', 'kline-code']));
   $('detail-goto-predict').addEventListener('click', () => goto('predict', ['predict-code']));
   $('detail-goto-write').addEventListener('click', () => goto('write', ['w-code']));

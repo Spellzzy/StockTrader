@@ -516,6 +516,133 @@ async def stock_profile(code: str = Query(..., min_length=4)) -> dict:
     return ok({"code": norm_code, "profile": await run_in_threadpool(collect)})
 
 
+def _to_float(value) -> float | None:
+    """资金流字段可能是字符串、带逗号或空值"""
+    if value is None or value == "":
+        return None
+    try:
+        return float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_fund_rows(raw, limit: int = 10) -> list[dict]:
+    """从 stock-data 的资金流原始结构中提取按日期的净流入记录
+
+    A 股常见：data.historyFundFlow.oneDayKlineList；
+    港股与其它版本可能是 list 或嵌套在别的 key 下，做兜底遍历。
+    """
+    if not isinstance(raw, dict):
+        return []
+    data = raw.get("data", raw)
+
+    items = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        hist = data.get("historyFundFlow")
+        if isinstance(hist, dict) and isinstance(hist.get("oneDayKlineList"), list):
+            items = hist["oneDayKlineList"]
+        else:
+            def walk(node):
+                if isinstance(node, list) and node and isinstance(node[0], dict) \
+                        and ("date" in node[0] or "time" in node[0]):
+                    return node
+                if isinstance(node, dict):
+                    for value in node.values():
+                        found = walk(value)
+                        if found:
+                            return found
+                return None
+
+            items = walk(data) or []
+
+    rows = []
+    for item in items[:limit]:
+        if not isinstance(item, dict):
+            continue
+        rows.append({
+            "date": str(item.get("date") or item.get("time") or "")[:10],
+            "price": _to_float(item.get("price")),
+            "main_net_in": _to_float(
+                item.get("mainNetIn") or item.get("main_flow") or item.get("main_net")
+            ),
+            "avg_in": _to_float(item.get("avgIn") or item.get("avg_flow")),
+        })
+    return rows
+
+
+def _extract_news_rows(raw, limit: int = 15) -> tuple[list[dict], int | None]:
+    """从新闻原始结构中提取标题 / 时间 / 来源 / 链接 / 摘要"""
+    if not isinstance(raw, dict):
+        return [], None
+    data = raw.get("data", raw)
+    items = data.get("data") if isinstance(data, dict) else data
+    total = data.get("total_num") if isinstance(data, dict) else None
+
+    rows = []
+    for item in (items or [])[:limit]:
+        if not isinstance(item, dict):
+            continue
+        rows.append({
+            "time": str(item.get("time") or item.get("date") or ""),
+            "title": str(item.get("title") or "").strip(),
+            "url": str(item.get("url") or "").strip(),
+            "source": str(item.get("src") or item.get("source") or "").strip(),
+            "summary": str(item.get("summary") or "").strip()[:200],
+        })
+    return rows, total
+
+
+@app.get("/api/stock/fund")
+async def stock_fund(code: str = Query(..., min_length=4), days: int = Query(10, ge=1, le=60)) -> dict:
+    """资金流向（按需加载，避免拖慢详情首屏）"""
+    from app.models.stock import normalize_stock_code
+    from app.services.market_service import MarketService
+
+    try:
+        norm_code = normalize_stock_code(code)
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的股票代码")
+
+    def collect():
+        try:
+            raw = MarketService().get_fund_flow(norm_code, days=days)
+        except Exception as e:
+            logger.warning(f"资金流获取失败 {norm_code}: {e}")
+            return {"rows": [], "error": str(e)}
+        return {"rows": _extract_fund_rows(raw, limit=days), "days": days}
+
+    return ok({"code": norm_code, **await run_in_threadpool(collect)})
+
+
+@app.get("/api/stock/news")
+async def stock_news(
+    code: str = Query(..., min_length=4),
+    size: int = Query(15, ge=1, le=50),
+    page: int = Query(1, ge=1, le=20),
+) -> dict:
+    """个股新闻（按需加载）"""
+    from app.models.stock import normalize_stock_code
+    from app.services.market_service import MarketService
+
+    try:
+        norm_code = normalize_stock_code(code)
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的股票代码")
+
+    def collect():
+        try:
+            raw = MarketService().get_news(norm_code, page=page, size=size)
+        except Exception as e:
+            logger.warning(f"新闻获取失败 {norm_code}: {e}")
+            return {"rows": [], "total": None, "error": str(e)}
+        rows, total = _extract_news_rows(raw, limit=size)
+        return {"rows": rows, "total": total, "page": page}
+
+    return ok({"code": norm_code, **await run_in_threadpool(collect)})
+
+
 @app.post("/api/cache/clear-quotes")
 async def clear_quotes_cache() -> dict:
     """清空服务端行情缓存，供手动「刷新」强制拉新行情

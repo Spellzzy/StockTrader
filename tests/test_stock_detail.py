@@ -75,6 +75,27 @@ def client(monkeypatch):
         "app.services.market_service.MarketService.get_profile",
         lambda self, code: {"data": {"name": "贵州茅台", "industry": "白酒"}},
     )
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_fund_flow",
+        lambda self, code, days=10: {
+            "code": 0, "data": {"historyFundFlow": {"oneDayKlineList": [
+                {"date": "2026-11-02", "mainNetIn": "34807822",
+                 "price": "8.83", "avgIn": "-12700391"},
+                {"date": "2026-11-03", "mainNetIn": "-97,408,254",
+                 "price": "7.95", "avgIn": "-18043123"},
+            ]}}
+        },
+    )
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_news",
+        lambda self, code, page=1, size=20: {
+            "code": 0, "data": {"total_num": 9999, "data": [
+                {"time": "2026-11-04 15:18:02", "title": "测试新闻标题",
+                 "url": "https://example.com/news/1", "src": "智选洞察",
+                 "summary": "测试摘要"},
+            ]}
+        },
+    )
     return TestClient(api_mod.app, raise_server_exceptions=False)
 
 
@@ -138,6 +159,71 @@ def test_profile_tolerates_failure(client, monkeypatch):
 def test_kline_tech_handles_empty():
     assert api_mod._kline_tech([]) == {}
     assert api_mod._kline_tech([{"close": None}]) == {}
+
+
+def test_fund_endpoint_parses_nested_structure(client):
+    d = client.get("/api/stock/fund?code=600519&days=10").json()["data"]
+
+    assert d["code"] == "sh600519"
+    assert d["days"] == 10
+    assert len(d["rows"]) == 2
+    assert d["rows"][0]["date"] == "2026-11-02"
+    assert d["rows"][0]["main_net_in"] == 34807822.0
+    assert d["rows"][1]["main_net_in"] == -97408254.0   # 带逗号也能解析
+    assert d["rows"][1]["price"] == 7.95
+
+
+def test_fund_endpoint_tolerates_failure(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_fund_flow",
+        lambda self, code, days=10: (_ for _ in ()).throw(RuntimeError("不可用")),
+    )
+    d = client.get("/api/stock/fund?code=sh600519").json()["data"]
+    assert d["rows"] == [] and "不可用" in d["error"]
+
+
+def test_fund_extractor_supports_flat_list_and_empty():
+    rows = api_mod._extract_fund_rows({"data": [
+        {"date": "2026-11-01", "main_flow": "1,000", "price": "10"},
+    ]})
+    assert rows[0]["main_net_in"] == 1000.0
+    assert api_mod._extract_fund_rows({}) == []
+    assert api_mod._extract_fund_rows({"data": {"todayFundFlow": None}}) == []
+
+
+def test_news_endpoint(client):
+    d = client.get("/api/stock/news?code=600519&size=15").json()["data"]
+
+    assert d["code"] == "sh600519"
+    assert d["total"] == 9999
+    assert d["rows"][0]["title"] == "测试新闻标题"
+    assert d["rows"][0]["url"].startswith("https://")
+    assert d["rows"][0]["source"] == "智选洞察"
+
+
+def test_news_endpoint_tolerates_failure(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_news",
+        lambda self, code, page=1, size=20: (_ for _ in ()).throw(RuntimeError("不可用")),
+    )
+    d = client.get("/api/stock/news?code=sh600519").json()["data"]
+    assert d["rows"] == [] and "不可用" in d["error"]
+
+
+def test_news_extractor_handles_empty():
+    assert api_mod._extract_news_rows({}) == ([], None)
+    assert api_mod._extract_news_rows({"data": {}}) == ([], None)
+
+
+def test_frontend_detail_panes_are_wired(client):
+    detail_js = client.get("/static/detail.js").text
+    for marker in ("detail-tab", "switchPane", "/api/stock/fund",
+                   "/api/stock/news", "flow-bar", "news-item", "paneLoaded"):
+        assert marker in detail_js, f"detail.js 缺少 {marker}"
+
+    css = client.get("/static/style.css").text
+    for cls in (".detail-tabs", ".detail-tab", ".flow-bar", ".news-item"):
+        assert cls in css, f"style.css 缺少 {cls}"
 
 
 def test_frontend_detail_page_is_wired(client):
