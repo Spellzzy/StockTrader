@@ -367,7 +367,14 @@
     search.addEventListener('input', render);
     pop.addEventListener('click', e => e.stopPropagation());
   }
-  PICKER_IDS.forEach(id => attachCodePicker($(id)));
+  /* 延后到 DOM 就绪再改结构：文档解析期间搬动 input 会让宿主 WebView
+     持有的元素引用失效（曾出现注入脚本对 null 调 getBoundingClientRect）。 */
+  let pickersMounted = false;
+  function mountPickers() {
+    if (pickersMounted) return;
+    pickersMounted = true;
+    PICKER_IDS.forEach(id => attachCodePicker($(id)));
+  }
   document.addEventListener('click', () =>
     document.querySelectorAll('.picker-pop').forEach(p => p.classList.add('hidden')));
 
@@ -467,9 +474,15 @@
   document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
     try { LS.setItem('st.tab', btn.dataset.tab); } catch (e) { /* ignore */ }
   }));
-  document.addEventListener('DOMContentLoaded', () => {
+  function initAfterDom() {
+    mountPickers();
     let saved = null;
     try { saved = LS.getItem('st.tab'); } catch (e) { /* ignore */ }
     if (saved && document.querySelector('.tab[data-tab="' + saved + '"]')) goTab(saved);
-  });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAfterDom);
+  } else {
+    initAfterDom();
+  }
 })();

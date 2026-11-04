@@ -52,6 +52,15 @@ def test_ux_js_covers_all_four_areas():
         assert marker in js, f"ux.js 缺少 {marker}"
 
 
+def test_picker_mount_deferred_until_dom_ready():
+    """解析期搬动 input 会让宿主 WebView 的元素引用失效，必须等 DOM 就绪"""
+    js = client.get("/static/ux.js").text
+    assert "mountPickers" in js
+    assert "document.readyState" in js
+    assert "DOMContentLoaded" in js
+    assert "PICKER_IDS.forEach(id => attachCodePicker($(id)))" in js
+
+
 def test_code_picker_covers_all_code_inputs():
     js = client.get("/static/ux.js").text
     for input_id in ("wl-code", "codes", "kline-code", "bt-code", "lab-code",
