@@ -71,7 +71,19 @@ def test_picker_mount_deferred_until_dom_ready():
     assert "mountPickers" in js
     assert "document.readyState" in js
     assert "DOMContentLoaded" in js
-    assert "PICKER_IDS.forEach(id => attachCodePicker($(id)))" in js
+    assert "PICKER_IDS.forEach(id => attachCodePicker($(id), true))" in js
+    assert "DETAIL_ONLY_IDS" in js and "'predict-code'" in js
+
+
+def test_stock_codes_are_linkified_globally():
+    """详情入口不能只绑在某一类表格上"""
+    js = client.get("/static/ux.js").text
+    assert "function linkifyCodes" in js
+    assert "root.querySelectorAll('td')" in js
+    assert "linkifyCodes(table)" in js          # tableRows 渲染的表
+    assert "linkifyCodes()" in js               # refresh 后的全局扫描
+    assert "td.cellIndex === 0" in js           # 纯 6 位数字仅第一列才认
+    assert "td.classList.contains('num')" in js  # 数值列不误伤
 
 
 def test_code_picker_covers_all_code_inputs():

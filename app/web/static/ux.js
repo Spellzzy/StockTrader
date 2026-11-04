@@ -16,6 +16,8 @@
     'wl-code', 'codes', 'kline-code', 'bt-code', 'lab-code',
     'pos-code', 'w-code', 'a-code', 'p-code',
   ];
+  /* 已有专用分组下拉、只需要补「详情」按钮的输入框 */
+  const DETAIL_ONLY_IDS = ['predict-code'];
   const TABS = [
     ['overview', '总览'], ['market', '行情'], ['analysis', '统计'],
     ['backtest', '回测'], ['lab', '策略实验室'], ['predict', 'AI 预测'],
@@ -183,7 +185,12 @@
   window.refresh = async function () {
     showSkeleton();
     try { await baseRefresh(); }
-    finally { hideSkeleton(); stampUpdate(); }
+    finally {
+      hideSkeleton();
+      stampUpdate();
+      /* 覆盖总览 / 行情等直接用 innerHTML 渲染、没走 tableRows 的表格 */
+      linkifyCodes();
+    }
   };
 
   /* ==================== 4. 表格：排序 / 筛选 / 分页 / CSV / 空状态 ==================== */
@@ -203,6 +210,26 @@
   }
   window.emptyRow = emptyRowEx;
   ST.emptyRow = emptyRowEx;
+
+  /* 把任意表格里合法的股票代码变成详情入口。
+     不依赖某个页面用哪种渲染方式（tableRows / 直接 innerHTML 都覆盖），
+     也不限第一列；数值列、已含交互元素的单元格跳过，避免误伤。 */
+  function linkifyCodes(scope) {
+    const root = scope || document.querySelector('main');
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll('td').forEach(td => {
+      if (td.classList.contains('stock-link') || td.classList.contains('empty')
+          || td.classList.contains('num')) return;
+      if (td.querySelector('a, button, input')) return;
+      const text = (td.textContent || '').trim();
+      const prefixed = /^(sh|sz|hk|bj|us)\d{6}$/i.test(text);
+      const firstColBare = td.cellIndex === 0 && /^\d{6}$/.test(text);
+      if (!prefixed && !firstColBare) return;
+      td.classList.add('stock-link');
+      td.dataset.code = text;
+      td.title = '点击查看个股详情';
+    });
+  }
 
   function cellText(tr, idx) {
     const td = tr.children[idx];
@@ -261,6 +288,7 @@
     table.dataset.page = String(page);
     tbody.replaceChildren(...rows.slice(page * size, (page + 1) * size)
       .map(tr => tr.cloneNode(true)));
+    linkifyCodes(table);
 
     if (bar) {
       bar.querySelector('.table-count').textContent = '共 ' + rows.length + ' 行';
@@ -274,17 +302,6 @@
     if (!table) return;
     table._allRows = Array.from(table.querySelector('tbody').children)
       .map(tr => tr.cloneNode(true));
-    /* 第一列若是股票代码，做成可点开的详情入口 */
-    table._allRows.forEach(tr => {
-      const td = tr.children && tr.children[0];
-      if (!td) return;
-      const code = (td.textContent || '').trim();
-      if (/^(sh|sz|hk|bj|us)?\d{6}$/i.test(code)) {
-        td.classList.add('stock-link');
-        td.dataset.code = code;
-        td.title = '点击查看个股详情';
-      }
-    });
     if (table.dataset.enhanced) { applyTable(table); return; }
     table.dataset.enhanced = '1';
 
@@ -355,12 +372,31 @@
     return pickerData;
   }
 
-  function attachCodePicker(input) {
+  function attachDetailButton(wrap, input) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn ghost picker-detail';
+    btn.textContent = '详情';
+    btn.title = '打开该股票的个股详情';
+    btn.addEventListener('click', () => {
+      const code = input.value.trim().split(/[\s,]+/).pop();
+      if (code && ST.openStockDetail) ST.openStockDetail(code);
+      else ST.toast('请先填股票代码', 'info');
+    });
+    wrap.appendChild(btn);
+  }
+
+  function attachCodePicker(input, withPicker = true) {
     if (!input || !input.parentNode) return;
     const wrap = document.createElement('span');
     wrap.className = 'picker-wrap';
     input.parentNode.insertBefore(wrap, input);
     wrap.appendChild(input);
+
+    if (!withPicker) {          // 已有专用下拉的输入框：只挂「详情」按钮
+      attachDetailButton(wrap, input);
+      return;
+    }
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -369,17 +405,7 @@
     btn.title = '从已收藏或持仓中选代码';
     wrap.appendChild(btn);
 
-    const detailBtn = document.createElement('button');
-    detailBtn.type = 'button';
-    detailBtn.className = 'btn ghost picker-detail';
-    detailBtn.textContent = '详情';
-    detailBtn.title = '打开该股票的个股详情';
-    detailBtn.addEventListener('click', () => {
-      const code = input.value.trim().split(/[\s,]+/).pop();
-      if (code && ST.openStockDetail) ST.openStockDetail(code);
-      else ST.toast('请先填股票代码', 'info');
-    });
-    wrap.appendChild(detailBtn);
+    attachDetailButton(wrap, input);
 
     const pop = document.createElement('div');
     pop.className = 'picker-pop hidden';
@@ -430,7 +456,8 @@
   function mountPickers() {
     if (pickersMounted) return;
     pickersMounted = true;
-    PICKER_IDS.forEach(id => attachCodePicker($(id)));
+    PICKER_IDS.forEach(id => attachCodePicker($(id), true));
+    DETAIL_ONLY_IDS.forEach(id => attachCodePicker($(id), false));
   }
   document.addEventListener('click', () =>
     document.querySelectorAll('.picker-pop').forEach(p => p.classList.add('hidden')));
