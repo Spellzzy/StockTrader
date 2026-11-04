@@ -18,7 +18,7 @@ node = shutil.which("node")
 pytestmark = pytest.mark.skipif(node is None, reason="未安装 node，跳过 JS 冒烟测试")
 
 
-def test_three_scripts_execute_in_shared_global_scope():
+def test_all_scripts_execute_in_shared_global_scope():
     result = subprocess.run(
         [node, str(SCRIPT)], cwd=ROOT, capture_output=True, timeout=30,
         text=True, encoding="utf-8", errors="replace",

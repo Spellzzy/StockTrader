@@ -1,9 +1,10 @@
 /**
  * Web 前端冒烟测试：在 Node 里用最小 DOM mock 依序执行
- * app.js / p1.js / p2.js，任一脚本顶层抛错即失败。
+ * app.js / ux.js / p1.js / p2.js，任一脚本顶层抛错即失败。
  *
- * 背景：三个文件是经典 script，共享全局词法环境；曾因顶层 const 重名
+ * 背景：这些文件是经典 script，共享全局词法环境；曾因顶层 const 重名
  * 和 $() 选择器用法不一致导致整个脚本静默失效，纯接口测试发现不了。
+ * 这里把四个脚本拼进同一次 eval，以复现「顶层 let/const 跨文件共享」。
  *
  * 运行：node scripts/js_smoke.mjs
  */
@@ -13,32 +14,49 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+function makeParent() {
+  return {
+    insertBefore() {}, appendChild() {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    classList: { add() {}, remove() {} },
+  };
+}
+
 function makeElement(id) {
   return {
-    id,
-    innerHTML: "",
-    textContent: "",
-    className: "",
-    value: "",
-    checked: false,
-    dataset: {},
-    classList: { add() {}, remove() {}, contains: () => false },
-    addEventListener() {},
-    scrollIntoView() {},
-    querySelector: () => makeElement(id + "::child"),
+    id, tagName: "DIV", innerHTML: "", textContent: "", className: "",
+    value: "", checked: false, type: "", title: "", placeholder: "",
+    disabled: false, href: "", download: "", hidden: false,
+    dataset: {}, style: {}, children: [], parentNode: makeParent(),
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    addEventListener() {}, removeEventListener() {},
+    appendChild(child) { this.children.push(child); child.parentNode = this; return child; },
+    insertBefore(child) { this.children.push(child); child.parentNode = this; return child; },
+    replaceChildren(...nodes) { this.children = nodes; },
+    querySelector: (sel) => makeElement(id + "::" + sel),
     querySelectorAll: () => [],
+    remove() {}, focus() {}, click() {}, scrollIntoView() {},
+    closest: () => null,
   };
 }
 
 const elements = new Map();
 globalThis.document = {
+  hidden: false,
   getElementById(id) {
     if (!elements.has(id)) elements.set(id, makeElement(id));
     return elements.get(id);
   },
+  createElement: (tag) => makeElement("created::" + tag),
+  querySelector: () => null,
   querySelectorAll: () => [],
+  addEventListener() {},
 };
 globalThis.window = globalThis;
+globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+globalThis.setInterval = () => 0;      // 不真的起定时器，避免测试进程不退出
+globalThis.clearInterval = () => {};
 globalThis.fetch = async () => ({
   ok: true,
   json: async () => ({ ok: true, data: { version: "0.0.0-smoke" } }),
@@ -48,18 +66,23 @@ if (!globalThis.crypto) globalThis.crypto = (await import("node:crypto")).webcry
 let asyncFailures = 0;
 process.on("unhandledRejection", () => { asyncFailures += 1; });
 
-for (const name of ["app.js", "p1.js", "p2.js"]) {
-  const code = readFileSync(join(root, "app/web/static", name), "utf-8");
-  // 三个脚本必须能在同一全局词法环境中依序执行（经典 script 语义）
-  // eslint-disable-next-line no-eval
-  (0, eval)(code);
-  console.log(`  ${name} 顶层执行 OK`);
-}
+const names = ["app.js", "ux.js", "p1.js", "p2.js"];
+const combined = names
+  .map((name) => readFileSync(join(root, "app/web/static", name), "utf-8"))
+  .join("\n;\n");
 
-// 等待 refresh() 等异步收尾，捕获未处理的 rejection
+try {
+  // eslint-disable-next-line no-eval
+  (0, eval)(combined);
+} catch (e) {
+  console.error("脚本顶层执行失败:", e && e.message);
+  throw e;
+}
+console.log(`  ${names.join(" / ")} 同全局环境顶层执行 OK`);
+
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);
   process.exit(1);
 }
-console.log("JS 冒烟测试通过：三个脚本顶层均无异常");
+console.log("JS 冒烟测试通过：四个脚本顶层均无异常");

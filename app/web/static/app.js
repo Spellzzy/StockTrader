@@ -240,4 +240,6 @@ async function refreshSafe(fn) {
   catch (e) { showError(String(e.message || e)); }
 }
 
-refresh();
+/* 等 ux.js / p1.js / p2.js 都注册完再跑首次加载，
+   这样增强层（超时、缓存、骨架、表格工具条）对首屏同样生效。 */
+document.addEventListener('DOMContentLoaded', () => window.refresh());

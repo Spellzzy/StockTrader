@@ -17,8 +17,17 @@
     </div>
     <div class="topbar-right">
       <span id="status" class="status offline"><i></i>连接中</span>
+      <span id="last-update" class="version" title="本页数据更新时间"></span>
+      <label class="autorefresh" title="定时刷新当前页，页面隐藏时自动暂停">
+        <input id="auto-refresh" type="checkbox"> 自动刷新</label>
+      <select id="auto-interval" class="mini-select" aria-label="自动刷新间隔">
+        <option value="30000">30 秒</option>
+        <option value="60000">60 秒</option>
+        <option value="120000">2 分钟</option>
+      </select>
       <span id="version" class="version"></span>
       <button id="refresh" class="btn ghost" title="刷新当前页">↻ 刷新</button>
+      <button id="cmd-open" class="btn ghost" title="命令面板 (Ctrl+K)">⌘</button>
     </div>
   </header>
 
@@ -40,6 +49,10 @@
 
   <main>
     <div id="alert" class="alert hidden"></div>
+    <div id="busy-bar" class="busy-bar hidden">
+      <span class="spinner"></span><span id="busy-text">加载中…</span>
+      <button id="busy-cancel" class="btn ghost">取消</button>
+    </div>
 
     <!-- 总览 -->
     <section id="panel-overview" class="panel">
@@ -313,7 +326,18 @@
     <span> · 命令行仍可用：<code>stock-ai --help</code></span>
   </footer>
 
+  <div id="toast-box" class="toast-box" aria-live="polite"></div>
+
+  <div id="cmd-panel" class="cmd-panel hidden">
+    <div class="cmd-box">
+      <input id="cmd-input" type="text" placeholder="输入页面名或动作，回车执行…" autocomplete="off">
+      <div id="cmd-list" class="cmd-list"></div>
+      <div class="cmd-foot">↑↓ 选择 · Enter 执行 · Esc 关闭　|　Ctrl+K 命令面板 · ? 快捷键帮助</div>
+    </div>
+  </div>
+
   <script src="/static/app.js"></script>
+  <script src="/static/ux.js"></script>
   <script src="/static/p1.js"></script>
   <script src="/static/p2.js"></script>
 </body>
