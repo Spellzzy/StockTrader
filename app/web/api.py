@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -462,6 +463,240 @@ async def predict(
         return PredictorService().predict(code, use_dl=dl, auto_train=False)
 
     return ok(await run_in_threadpool(collect))
+
+
+# ==================== P2：只读数据（预警 / 模拟盘 / 设置） ====================
+
+# 测试可注入自定义 session scope，避免写操作碰到用户真实数据库
+WRITE_SCOPE = None
+
+
+def _alert_dto(a) -> dict:
+    return {
+        "id": a.id, "stock_code": a.stock_code, "stock_name": a.stock_name or "",
+        "condition_type": a.condition_type, "condition_desc": a.condition_desc or "",
+        "threshold": a.threshold, "is_active": bool(a.is_active),
+        "is_triggered": bool(a.is_triggered), "repeat": bool(a.repeat),
+        "note": a.note or "",
+        "cooldown_minutes": a.cooldown_minutes,
+        "last_triggered_at": a.last_triggered_at,
+    }
+
+
+@app.get("/api/alerts")
+async def alerts() -> dict:
+    from app.services.alert_service import AlertService
+
+    def collect():
+        return [_alert_dto(a) for a in AlertService().list_alerts()]
+
+    return ok({"rows": await run_in_threadpool(collect)})
+
+
+@app.get("/api/alert-types")
+async def alert_types() -> dict:
+    from app.services.alert_service import AlertService
+
+    return ok({"items": await run_in_threadpool(AlertService.get_condition_types)})
+
+
+@app.get("/api/paper")
+async def paper() -> dict:
+    from dataclasses import asdict
+
+    from app.services.paper_broker import PaperBroker
+
+    def collect():
+        broker = PaperBroker()
+        return {
+            "summary": broker.summary(),
+            "positions": [asdict(p) for p in broker.positions()],
+            "orders": [asdict(o) for o in broker.orders(limit=20)],
+        }
+
+    return ok(await run_in_threadpool(collect))
+
+
+# 设置页只展示这些字段；含密钥的字段一律不回传明文
+SETTING_FIELDS = [
+    ("database.path", "数据库路径", False),
+    ("stock_data.bin_path", "行情程序", False),
+    ("web.host", "Web 监听地址", False),
+    ("web.port", "Web 端口", False),
+    ("features.order_enabled", "订单执行层（冻结）", False),
+    ("broker.enabled", "券商通道 kill switch", False),
+    ("ai.llm.provider", "LLM 厂商", False),
+    ("ai.llm.api_key", "LLM API Key", True),
+    ("ai.quality.random_baseline", "模型随机基线", False),
+    ("risk.max_order_amount", "单笔风控上限", False),
+    ("risk.max_daily_amount", "单日风控上限", False),
+    ("notification.on_trade", "成交推送", False),
+    ("notification.pushplus.token", "PushPlus Token", True),
+]
+
+
+def _get_path(cfg: dict, path: str):
+    node = cfg
+    for part in path.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+@app.get("/api/settings")
+async def settings() -> dict:
+    cfg = get_config()
+    rows = []
+    for path, label, sensitive in SETTING_FIELDS:
+        value = _get_path(cfg, path)
+        env_key = "STOCK_AI_" + "__".join(p.upper() for p in path.split("."))
+        rows.append({
+            "key": path,
+            "label": label,
+            "value": ("已配置" if value else "未配置") if sensitive else value,
+            "sensitive": sensitive,
+            "env_key": env_key,
+            "env_set": env_key in os.environ,
+        })
+    return ok({
+        "rows": rows,
+        "note": "设置页只读。密钥请使用环境变量配置，页面不会显示明文。",
+    })
+
+
+# ==================== P2：写操作（二次确认 + 幂等） ====================
+
+class WriteBase(BaseModel):
+    confirm: bool = False
+    client_id: str = Field(..., min_length=8, max_length=64)
+
+
+class TradeWrite(WriteBase):
+    action: str = Field("buy", pattern="^(buy|sell)$")
+    code: str
+    price: float = Field(..., gt=0)
+    quantity: int = Field(..., gt=0)
+    name: str = ""
+    reason: str = ""
+    strategy: str = ""
+
+
+class AlertWrite(WriteBase):
+    op: str = Field(..., pattern="^(add|toggle|delete|reset)$")
+    alert_id: int = 0
+    code: str = ""
+    condition_type: str = ""
+    threshold: float | None = None
+    repeat: bool = False
+    note: str = ""
+
+
+class PaperWrite(WriteBase):
+    op: str = Field(..., pattern="^(buy|sell|reset)$")
+    code: str = ""
+    price: float = 0.0
+    quantity: int = 0
+    initial_cash: float = 0.0
+
+
+async def _write(req: WriteBase, endpoint: str, fn: Callable[[], Any]) -> dict:
+    from app.web.writes import WriteConflict, WriteRejected, execute_write
+
+    def collect():
+        return execute_write(
+            client_id=req.client_id,
+            endpoint=endpoint,
+            payload=req.model_dump(),
+            fn=fn,
+            scope=WRITE_SCOPE,
+        )
+
+    try:
+        return ok(await run_in_threadpool(collect))
+    except WriteRejected as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except WriteConflict as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/write/trade")
+async def write_trade(req: TradeWrite) -> dict:
+    from app.services.portfolio_service import PortfolioService
+    from app.services.trade_service import TradeService
+
+    def execute():
+        trade = TradeService().add_trade(
+            stock_code=req.code, action=req.action, price=req.price,
+            quantity=req.quantity, stock_name=req.name,
+            reason=req.reason, strategy=req.strategy,
+        )
+        try:
+            PortfolioService().rebuild_portfolio()
+        except Exception as e:
+            logger.warning(f"持仓重算失败（交易已记录）: {e}")
+        return {
+            "id": trade.id, "stock_code": trade.stock_code,
+            "action": trade.action, "price": trade.price,
+            "quantity": trade.quantity, "amount": trade.amount,
+        }
+
+    return await _write(req, "trade", execute)
+
+
+@app.post("/api/write/alert")
+async def write_alert(req: AlertWrite) -> dict:
+    from app.services.alert_service import AlertService
+
+    def execute():
+        service = AlertService()
+        if req.op == "add":
+            if not req.code or not req.condition_type:
+                raise ValueError("新增预警需要 code 与 condition_type")
+            alert = service.add_alert(
+                stock_code=req.code, condition_type=req.condition_type,
+                threshold=req.threshold, repeat=req.repeat, note=req.note,
+            )
+            return {"op": "add", "id": alert.id, "code": alert.stock_code}
+        if not req.alert_id:
+            raise ValueError("该操作需要 alert_id")
+
+        if req.op == "toggle":
+            result = service.toggle_alert(req.alert_id)
+            return {"op": "toggle", "id": req.alert_id,
+                    "is_active": bool(result.is_active) if result else None}
+        if req.op == "delete":
+            return {"op": "delete", "id": req.alert_id,
+                    "deleted": service.delete_alert(req.alert_id)}
+        result = service.reset_alert(req.alert_id)
+        return {"op": "reset", "id": req.alert_id, "ok": result is not None}
+
+    return await _write(req, "alert", execute)
+
+
+@app.post("/api/write/paper")
+async def write_paper(req: PaperWrite) -> dict:
+    from dataclasses import asdict
+
+    from app.services.paper_broker import PaperBroker
+
+    def execute():
+        broker = PaperBroker()
+        if req.op == "reset":
+            broker.reset(initial_cash=req.initial_cash or None)
+            return {"op": "reset", "initial_cash": broker.account.initial_cash}
+        if not req.code or req.price <= 0:
+            raise ValueError("下单需要 code 与有效的 price")
+
+        if req.op == "buy":
+            order = broker.buy(req.code, req.price, quantity=req.quantity)
+        else:
+            order = broker.sell(req.code, req.price, quantity=req.quantity)
+        return {"op": req.op, "order": asdict(order)}
+
+    return await _write(req, "paper", execute)
 
 
 # 静态资源挂在最后，避免覆盖 API 路由

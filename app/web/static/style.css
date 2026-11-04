@@ -80,6 +80,14 @@ input[type=text]:focus { border-color: var(--accent); }
   background: var(--surface-2); color: var(--dim); margin: 2px 4px 2px 0; }
 .tag.bad { color: var(--up); } .tag.good { color: var(--down); }
 .busy { color: var(--accent); }
+.confirm { display: flex; align-items: center; gap: 8px; color: var(--warn);
+  font-size: 13px; margin-bottom: 12px; cursor: pointer; }
+.confirm input { accent-color: var(--accent); width: 16px; height: 16px; }
+.btn.danger { color: var(--up); border-color: rgba(229,72,77,.5); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.row-actions { display: flex; gap: 6px; }
+.row-actions .btn { padding: 4px 10px; font-size: 12px; }
+.result-box.ok { border-color: rgba(48,164,108,.5); }
 
 .chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   min-height: 220px; display: flex; align-items: center; justify-content: center; padding: 16px; }
