@@ -339,6 +339,26 @@ async def code_picker() -> dict:
     return ok(await run_in_threadpool(collect))
 
 
+@app.get("/api/watchlist/quotes")
+async def watchlist_quotes() -> dict:
+    """我的自选 · 实时行情（含自选备注）
+
+    复用 WatchlistService.list_watched_with_quote()，拉不到行情时保留
+    股票记录、价格字段为 0，不抛错。
+    """
+    from datetime import datetime as _dt
+
+    from app.services.watchlist_service import WatchlistService
+
+    def collect():
+        return {
+            "rows": WatchlistService().list_watched_with_quote(),
+            "generated_at": _dt.now().isoformat(timespec="seconds"),
+        }
+
+    return ok(await run_in_threadpool(collect))
+
+
 @app.get("/api/strategies")
 async def strategies() -> dict:
     from app.services.strategy import list_strategies

@@ -63,6 +63,18 @@
 
     <!-- 行情 -->
     <section id="panel-market" class="panel hidden">
+      <div class="section-head"><h2>我的自选 · 实时行情</h2>
+        <span id="watchlist-time" class="dim"></span></div>
+      <div class="toolbar">
+        <button id="watchlist-refresh" class="btn ghost">刷新自选行情</button>
+        <span id="watchlist-hint" class="dim"></span>
+      </div>
+      <div class="table-wrap"><table id="watchlist-quotes">
+        <thead><tr><th>代码</th><th>名称</th><th class="num">现价</th><th class="num">涨跌幅</th>
+          <th class="num">涨跌额</th><th class="num">今开</th><th class="num">最高</th>
+          <th class="num">最低</th><th>备注</th></tr></thead>
+        <tbody></tbody></table></div>
+
       <div class="section-head"><h2>实时行情</h2><span class="dim">支持空格或逗号分隔多只股票</span></div>
       <div class="toolbar">
         <input id="codes" type="text" value="sh000001,sh600519,sz002555" placeholder="如 600519 000001 或 600519,000001">

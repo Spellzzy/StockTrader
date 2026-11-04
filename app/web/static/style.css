@@ -97,6 +97,7 @@ input[type=text]:focus { border-color: var(--accent); }
 .toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
 .tag.bad { color: var(--warn); border-color: rgba(229,160,72,.45); }
 tr.cleared { opacity: .68; }
+tr.clickable { cursor: pointer; }
 
 .chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   min-height: 220px; display: flex; align-items: center; justify-content: center; padding: 16px; }

@@ -65,3 +65,40 @@ def test_frontend_wires_the_picker(client):
     for marker in ("/api/code-picker", "optgroup", "我的自选", "当前持仓",
                    "predict-picker"):
         assert marker in js, f"p1.js 缺少 {marker}"
+
+
+def test_watchlist_quotes_api(client, monkeypatch):
+    rows = [{
+        "code": "sh600519", "name": "贵州茅台", "market": "A", "note": "长期关注",
+        "price": 1446.44, "change": -33.56, "change_percent": -2.27,
+        "open": 1470.0, "high": 1480.6, "low": 1439.0,
+    }]
+    monkeypatch.setattr(
+        "app.services.watchlist_service.WatchlistService.list_watched_with_quote",
+        lambda self: rows,
+    )
+
+    d = client.get("/api/watchlist/quotes").json()["data"]
+    assert d["rows"][0]["code"] == "sh600519"
+    assert d["rows"][0]["note"] == "长期关注"
+    assert d["generated_at"]
+
+
+def test_watchlist_quotes_empty(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.watchlist_service.WatchlistService.list_watched_with_quote",
+        lambda self: [],
+    )
+    d = client.get("/api/watchlist/quotes").json()["data"]
+    assert d["rows"] == []
+
+
+def test_frontend_wires_watchlist_table(client):
+    html = client.get("/").text
+    for marker in ("watchlist-quotes", "watchlist-refresh", "watchlist-time"):
+        assert marker in html
+
+    js = client.get("/static/p2.js").text
+    for marker in ("/api/watchlist/quotes", "register('market', loadMarket)",
+                   "tr[data-code]"):
+        assert marker in js, f"p2.js 缺少 {marker}"

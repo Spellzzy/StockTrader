@@ -187,6 +187,45 @@ $('#alert-list').querySelector('tbody').addEventListener('click', e => {
   if (btn) rowAction(btn);
 });
 
+/* ---------------- 行情页：我的自选实时行情 ---------------- */
+async function loadWatchlistQuotes() {
+  const hint = $('#watchlist-hint');
+  hint.textContent = '加载中…';
+  try {
+    const d = await api('/api/watchlist/quotes');
+    const rows = d.rows || [];
+    $('#watchlist-time').textContent = '更新于 '
+      + String(d.generated_at || '').replace('T', ' ');
+    tableRows($('#watchlist-quotes'), rows.map(x => `<tr class="clickable" data-code="${esc(x.code)}">
+      <td>${esc(x.code)}</td><td>${esc(x.name || '')}</td>
+      <td class="num">${finite(x.price)}</td>
+      <td class="num ${cls(x.change_percent)}">${signed(x.change_percent)}%</td>
+      <td class="num ${cls(x.change)}">${signed(x.change)}</td>
+      <td class="num">${finite(x.open)}</td><td class="num">${finite(x.high)}</td>
+      <td class="num">${finite(x.low)}</td>
+      <td>${esc(x.note || '')}</td></tr>`).join(''),
+      9, '暂无自选股，可在 TUI 用 / 搜索添加');
+    hint.textContent = rows.length
+      ? `共 ${rows.length} 只 · 点击一行可填入查询 / K 线输入框`
+      : '暂无自选股';
+  } catch (e) {
+    hint.textContent = '自选行情加载失败：' + String(e.message || e);
+  }
+}
+
+async function loadMarket() {
+  await Promise.all([loadQuotes(), loadWatchlistQuotes()]);
+}
+register('market', loadMarket);
+
+$('#watchlist-refresh').addEventListener('click', loadWatchlistQuotes);
+$('#watchlist-quotes').querySelector('tbody').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-code]');
+  if (!tr) return;
+  $('#codes').value = tr.dataset.code;
+  $('#kline-code').value = tr.dataset.code;
+});
+
 /* ---------------- 持仓手工校正（覆盖 P1 的只读交易持仓页） ---------------- */
 async function loadTradesWithEdit() {
   const showCleared = $('#pos-show-cleared').checked;
