@@ -148,6 +148,9 @@
     <section id="panel-predict" class="panel hidden">
       <div class="section-head"><h2>AI 预测</h2><span class="dim">模型准确率低于随机基线时会自动降权并标注</span></div>
       <div class="toolbar">
+        <select id="predict-picker" class="input" aria-label="快捷选择股票">
+          <option value="">快捷选择…</option>
+        </select>
         <input id="predict-code" type="text" value="sz002555" placeholder="股票代码">
         <button id="predict-btn" class="btn primary">开始预测</button>
         <span id="predict-hint" class="dim"></span>

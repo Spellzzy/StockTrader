@@ -174,9 +174,33 @@ async function runOptimize() {
 }
 
 /* ---------------- AI 预测 ---------------- */
+let pickerLoaded = false;
+async function loadCodePicker() {
+  const sel = $('#predict-picker');
+  if (pickerLoaded) return;
+  try {
+    const d = await api('/api/code-picker');
+    const watched = d.watchlist || [], held = d.holdings || [];
+    const group = (label, rows) => rows.length
+      ? `<optgroup label="${label} (${rows.length})">` + rows.map(x =>
+          `<option value="${esc(x.code)}">${esc(x.code)} ${esc(x.name || '')}</option>`
+        ).join('') + '</optgroup>'
+      : '';
+    sel.innerHTML = '<option value="">快捷选择…</option>'
+      + group('我的自选', watched) + group('当前持仓', held);
+    $('#predict-hint').textContent = (watched.length + held.length)
+      ? '可从下拉挑选已收藏 / 持仓，选完点「开始预测」'
+      : '暂无自选或持仓，可直接输入代码';
+    pickerLoaded = true;
+  } catch (e) {
+    sel.innerHTML = '<option value="">快捷选择（加载失败）</option>';
+  }
+}
+
 async function loadPredict() {
   const el = $('#predict-result');
   if (!el.innerHTML) el.innerHTML = '<div class="result-box dim">输入股票代码后点击「开始预测」。预测不会自动训练模型。</div>';
+  await loadCodePicker();
 }
 
 async function runPredict() {
@@ -253,4 +277,7 @@ $('#lab-signals-btn').addEventListener('click', loadSignals);
 $('#lab-optimize-btn').addEventListener('click', runOptimize);
 $('#predict-btn').addEventListener('click', runPredict);
 $('#predict-code').addEventListener('keydown', e => { if (e.key === 'Enter') runPredict(); });
+$('#predict-picker').addEventListener('change', e => {
+  if (e.target.value) $('#predict-code').value = e.target.value;
+});
 })();

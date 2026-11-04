@@ -316,6 +316,29 @@ async def portfolio(include_cleared: bool = False) -> dict:
     return ok(await run_in_threadpool(collect))
 
 
+@app.get("/api/code-picker")
+async def code_picker() -> dict:
+    """代码快捷选择数据源：已收藏（自选股）+ 当前持仓
+
+    只查本地库，不请求行情，保证下拉秒开。
+    """
+    from app.services.portfolio_service import PortfolioService
+    from app.services.watchlist_service import WatchlistService
+
+    def collect():
+        watched = [
+            {"code": s.code, "name": s.name or ""}
+            for s in WatchlistService().list_watched()
+        ]
+        holdings = [
+            {"code": h.stock_code, "name": h.stock_name or ""}
+            for h in PortfolioService().get_portfolio()
+        ]
+        return {"watchlist": watched, "holdings": holdings}
+
+    return ok(await run_in_threadpool(collect))
+
+
 @app.get("/api/strategies")
 async def strategies() -> dict:
     from app.services.strategy import list_strategies
