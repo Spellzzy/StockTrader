@@ -231,8 +231,13 @@ class HTMLReport:
         backtest_code: str = "",
         days: int = 180,
         with_chart: bool = True,
+        filename: str | None = None,
     ) -> str:
-        """生成报告，返回 HTML 文件路径"""
+        """生成报告，返回 HTML 文件路径
+
+        Args:
+            filename: 自定义文件名（定时任务用它跟手动报告区分开）
+        """
         from app.services.analysis_service import AnalysisService
         from app.services.portfolio_service import PortfolioService
 
@@ -274,7 +279,7 @@ class HTMLReport:
         )
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        path = self.output_dir / f"report_{now:%Y%m%d}.html"
+        path = self.output_dir / (filename or f"report_{now:%Y%m%d}.html")
         path.write_text(doc, encoding="utf-8")
         logger.info(f"HTML 报告已生成: {path}")
         return str(path)

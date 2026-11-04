@@ -77,7 +77,8 @@ def test_current_data_expires_even_on_weekend(tmp_path, monkeypatch):
     cache.put(pd.DataFrame({"date": [date(2026, 10, 30)], "close": [10.0]}), "sh600519")
 
     path = cache._path("sh600519", "day", "qfq")
-    old = time.time() - 7200
+    # mtime 要相对"模拟的今天"来设，否则跟 now 不在同一时间基准上
+    old = saturday.timestamp() - 7200
     os.utime(path, (old, old))
 
     assert cache.get("sh600519", now=saturday) is None

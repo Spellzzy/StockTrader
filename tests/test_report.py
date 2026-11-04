@@ -90,6 +90,14 @@ def test_report_is_single_file_html(monkeypatch, tmp_path):
     assert "sz002555" in content
 
 
+def test_custom_filename(monkeypatch, tmp_path):
+    report = _patch(monkeypatch, tmp_path)
+    path = report.build(with_chart=False, filename="daily_20261104.html")
+
+    assert path.endswith("daily_20261104.html")
+    assert (tmp_path / "daily_20261104.html").exists()
+
+
 def test_no_chart_mode_has_no_image(monkeypatch, tmp_path):
     report = _patch(monkeypatch, tmp_path)
     path = report.build(with_chart=False)

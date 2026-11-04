@@ -1526,6 +1526,23 @@ alembic stamp head
 
 日常使用不需要手动跑迁移，CLI 启动时的 `init_db()` 仍会建表并补齐新增列。
 
+### Q: 每天自动生成的报告在哪？
+
+Windows 计划任务 `StockAI_AM`（10:00）和 `StockAI_PM`（14:30）每天各跑一次，
+产出都在 `data/reports/`：
+
+| 文件 | 内容 |
+|------|------|
+| `digest_YYYYMMDD_am.md` / `_pm.md` | 智能日报正文（Markdown） |
+| `daily_YYYYMMDD_am.html` / `_pm.html` | 可视化报告（图表内嵌，可直接打开） |
+| `report_YYYYMMDD.html` | 手动执行 `stock-ai report` 生成的报告 |
+
+日志在 `logs/digest_YYYYMMDD.log`，同时会推送到 `config.yaml` 里已启用的渠道。
+周末和 `market.holidays` 里配置的节假日会自动跳过。
+
+> 计划任务必须用**绝对路径**调用脚本，因为它默认从 `C:\Windows\System32` 启动，
+> 用相对路径 `python scripts/scheduled_digest.py` 会直接报 exit code 2。
+
 ### Q: 想要一个能直接看/能分享的总览？
 
 ```bash
