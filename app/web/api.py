@@ -14,8 +14,10 @@ from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
+from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -95,6 +97,17 @@ async def http_error(request: Request, exc: StarletteHTTPException) -> JSONRespo
     return JSONResponse(
         status_code=exc.status_code,
         content={"ok": False, "error": str(exc.detail)},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """参数校验失败也用统一格式，且不回传原始请求体"""
+    first = exc.errors()[0] if exc.errors() else {}
+    location = ".".join(str(x) for x in first.get("loc", []))
+    return JSONResponse(
+        status_code=422,
+        content={"ok": False, "error": f"参数不合法: {location} {first.get('msg', '')}".strip()},
     )
 
 
@@ -246,6 +259,209 @@ async def open_report(name: str):
     if path.suffix != ".html":
         raise HTTPException(status_code=400, detail="只支持打开 HTML 报告")
     return FileResponse(path, media_type="text/html")
+
+
+# ==================== P1：统计 / 交易持仓 ====================
+
+def _analysis():
+    from app.services.analysis_service import AnalysisService
+
+    return AnalysisService()
+
+
+@app.get("/api/analysis/summary")
+async def analysis_summary() -> dict:
+    return ok(await run_in_threadpool(_analysis().summary))
+
+
+@app.get("/api/analysis/monthly")
+async def analysis_monthly() -> dict:
+    return ok({"rows": df_records(await run_in_threadpool(_analysis().monthly_summary))})
+
+
+@app.get("/api/analysis/ranking")
+async def analysis_ranking() -> dict:
+    return ok({"rows": df_records(await run_in_threadpool(_analysis().stock_pnl_ranking))})
+
+
+@app.get("/api/analysis/drawdown")
+async def analysis_drawdown() -> dict:
+    return ok(await run_in_threadpool(_analysis().max_drawdown))
+
+
+@app.get("/api/trades")
+async def trades(limit: int = Query(50, ge=1, le=500)) -> dict:
+    def collect():
+        df = _analysis().get_trades_df()
+        return df_records(df.tail(limit).iloc[::-1])
+
+    return ok({"rows": await run_in_threadpool(collect)})
+
+
+@app.get("/api/portfolio")
+async def portfolio() -> dict:
+    from app.services.portfolio_service import PortfolioService
+
+    def collect():
+        service = PortfolioService()
+        return {
+            "holdings": service.get_portfolio_with_market_data(),
+            "summary": service.get_total_summary(),
+        }
+
+    return ok(await run_in_threadpool(collect))
+
+
+@app.get("/api/strategies")
+async def strategies() -> dict:
+    from app.services.strategy import list_strategies
+
+    return ok({"items": await run_in_threadpool(list_strategies)})
+
+
+# ==================== P1：回测 ====================
+
+class BacktestRequest(BaseModel):
+    code: str
+    strategy: str = "macd_cross"
+    days: int = Field(180, ge=30, le=1000)
+    initial_capital: float = 100000.0
+    stop_loss: float = 0.0
+    take_profit: float = 0.0
+    fill_mode: str = "next_open"
+    slippage: float = 0.0
+
+
+class CompareRequest(BaseModel):
+    code: str
+    days: int = Field(180, ge=30, le=1000)
+    initial_capital: float = 100000.0
+    strategies: list[str] = []
+
+
+class PortfolioBacktestRequest(BaseModel):
+    # 兼容命令行习惯：既接受 ["a","b"] 也接受 "a,b"
+    codes: str | list[str]
+    strategy: str = "macd_cross"
+    days: int = Field(180, ge=30, le=1000)
+    initial_capital: float = 100000.0
+
+
+def _run_backtest(req: BacktestRequest) -> dict:
+    from app.services.backtest_service import BacktestService
+
+    result = BacktestService().run(
+        code=req.code, strategy=req.strategy, days=req.days,
+        initial_capital=req.initial_capital, stop_loss=req.stop_loss,
+        take_profit=req.take_profit, fill_mode=req.fill_mode,
+        slippage=req.slippage,
+    )
+    data = result.to_dict()
+    data["equity_curve"] = df_records(result.equity_curve)
+    return data
+
+
+@app.post("/api/backtest/run")
+async def backtest_run(req: BacktestRequest) -> dict:
+    return ok(await run_in_threadpool(_run_backtest, req))
+
+
+@app.post("/api/backtest/compare")
+async def backtest_compare(req: CompareRequest) -> dict:
+    from app.services.backtest_service import BacktestService
+    from app.services.strategy import list_strategy_names
+
+    def collect():
+        names = req.strategies or list_strategy_names()
+        service = BacktestService()
+        results = []
+        for name in names:
+            try:
+                results.append(service.run(
+                    code=req.code, strategy=name, days=req.days,
+                    initial_capital=req.initial_capital,
+                ))
+            except Exception as e:
+                logger.warning(f"回测 {name} 失败: {e}")
+        return [r.to_dict() for r in BacktestService.rank_results(results)]
+
+    return ok({"rows": await run_in_threadpool(collect), "code": req.code})
+
+
+@app.post("/api/backtest/portfolio")
+async def backtest_portfolio(req: PortfolioBacktestRequest) -> dict:
+    from app.models.stock import parse_stock_codes
+    from app.services.backtest_service import BacktestService
+
+    codes = parse_stock_codes(req.codes)
+    if not codes:
+        raise HTTPException(status_code=400, detail="未提供有效的股票代码")
+
+    def collect():
+        result = BacktestService().run_portfolio(
+            codes, strategy=req.strategy, days=req.days,
+            initial_capital=req.initial_capital,
+        )
+        if not result:
+            return {}
+        return {
+            **{k: v for k, v in result.items() if k not in ("equity_curve", "details")},
+            "equity_curve": df_records(result.get("equity_curve")),
+            "details": [r.to_dict() for r in result.get("details", [])],
+        }
+
+    return ok(await run_in_threadpool(collect))
+
+
+# ==================== P1：策略实验室 / AI 预测 ====================
+
+class OptimizeRequest(BaseModel):
+    code: str
+    strategy: str = "ma_cross"
+    days: int = Field(180, ge=60, le=1000)
+    max_combos: int = Field(8, ge=1, le=20)
+    folds: int = Field(3, ge=1, le=6)
+
+
+@app.get("/api/lab/signals")
+async def lab_signals(
+    code: str = Query(...),
+    days: int = Query(250, ge=60, le=1000),
+) -> dict:
+    from app.services.strategy_lab import StrategyLab
+
+    return ok({"rows": await run_in_threadpool(StrategyLab().analyze_all, code, days)})
+
+
+@app.post("/api/lab/optimize")
+async def lab_optimize(req: OptimizeRequest) -> dict:
+    from app.services.strategy_lab import StrategyLab
+
+    def collect():
+        lab = StrategyLab()
+        return {
+            "grid": lab.grid_search(req.code, req.strategy, days=req.days, max_combos=req.max_combos),
+            "walk_forward": lab.walk_forward(
+                req.code, req.strategy, days=req.days,
+                n_splits=req.folds, max_combos=req.max_combos,
+            ),
+        }
+
+    return ok(await run_in_threadpool(collect))
+
+
+@app.get("/api/predict")
+async def predict(
+    code: str = Query(...),
+    dl: bool = Query(False),
+) -> dict:
+    from app.ai.predictor_service import PredictorService
+
+    def collect():
+        # auto_train 固定 False：Web 侧绝不隐式训练模型
+        return PredictorService().predict(code, use_dl=dl, auto_train=False)
+
+    return ok(await run_in_threadpool(collect))
 
 
 # 静态资源挂在最后，避免覆盖 API 路由

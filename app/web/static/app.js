@@ -151,15 +151,57 @@ async function loadReports() {
   }).join('');
 }
 
+/* ---------------- 公共能力（供 p1.js 复用） ---------------- */
+async function post(path, body) {
+  const res = await fetch(path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  let payload;
+  try { payload = await res.json(); } catch (e) { throw new Error('服务返回格式异常'); }
+  if (!res.ok || !payload.ok) throw new Error(payload.error || ('HTTP ' + res.status));
+  return payload.data;
+}
+
+function sparkline(vals, label) {
+  const clean = vals.filter(v => v !== null && v !== undefined && !Number.isNaN(Number(v))).map(Number);
+  if (clean.length < 2) return '<span class="dim">数据点不足</span>';
+  const min = Math.min(...clean), max = Math.max(...clean), span = (max - min) || 1;
+  const W = 800, H = 200, PAD = 10;
+  const pts = clean.map((v, i) => {
+    const x = PAD + i * (W - 2 * PAD) / (clean.length - 1);
+    const y = H - PAD - ((v - min) / span) * (H - 2 * PAD);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const rising = clean[clean.length - 1] >= clean[0];
+  const color = rising ? '#e5484d' : '#30a46c';
+  const area = `M${pts[0]} L` + pts.slice(1).join(' L') + ` L${W - PAD},${H - PAD} L${PAD},${H - PAD} Z`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#sg)"/>
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2"/>
+    <text x="${PAD}" y="14" fill="#8b95a5" font-size="11">${esc(label)} · ${fmt(min)} ~ ${fmt(max)}</text>
+  </svg>`;
+}
+
 /* ---------------- 调度 ---------------- */
 const loaders = { overview: loadOverview, market: loadQuotes, reports: loadReports };
+
+window.ST = {
+  $, api, post, fmt, signed, cls, esc, emptyRow, card, sparkline,
+  setStatus, showError, clearError,
+  register(name, loader) { loaders[name] = loader; },
+};
 
 async function refresh() {
   clearError();
   try {
     await api('/api/health');
     setStatus(true);
-    await loaders[activeTab]();
+    if (loaders[activeTab]) await loaders[activeTab]();
   } catch (e) {
     setStatus(false, '连接失败');
     showError(String(e.message || e) + ' · 请确认服务已启动（双击 启动.bat）');

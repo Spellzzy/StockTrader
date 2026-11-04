@@ -25,6 +25,11 @@
   <nav class="tabs">
     <button class="tab active" data-tab="overview">总览</button>
     <button class="tab" data-tab="market">行情</button>
+    <button class="tab" data-tab="analysis">统计</button>
+    <button class="tab" data-tab="backtest">回测</button>
+    <button class="tab" data-tab="lab">策略实验室</button>
+    <button class="tab" data-tab="predict">AI 预测</button>
+    <button class="tab" data-tab="trades">交易持仓</button>
     <button class="tab" data-tab="reports">报告</button>
     <span class="tabs-note">仅监听 127.0.0.1 · 本机单用户</span>
   </nav>
@@ -73,6 +78,91 @@
       <div id="chart" class="chart"><span class="dim">点击「绘制」查看走势</span></div>
     </section>
 
+    <!-- 统计 -->
+    <section id="panel-analysis" class="panel hidden">
+      <div class="section-head"><h2>交易统计</h2><span class="dim">与命令行 sm / mo / rk / dd 同源</span></div>
+      <div id="analysis-cards" class="cards"></div>
+      <div class="two-col">
+        <div>
+          <div class="section-head"><h2>月度盈亏</h2></div>
+          <div class="table-wrap"><table id="monthly">
+            <thead><tr><th>月份</th><th class="num">笔数</th><th class="num">盈亏</th><th class="num">胜率</th></tr></thead>
+            <tbody></tbody></table></div>
+        </div>
+        <div>
+          <div class="section-head"><h2>个股盈亏排名</h2></div>
+          <div class="table-wrap"><table id="ranking">
+            <thead><tr><th>代码</th><th class="num">笔数</th><th class="num">盈亏</th><th class="num">胜率</th></tr></thead>
+            <tbody></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 回测 -->
+    <section id="panel-backtest" class="panel hidden">
+      <div class="section-head"><h2>策略回测</h2><span class="dim">默认次日开盘成交口径（含 T+1 / 涨跌停 / 滑点）</span></div>
+      <div class="form-grid">
+        <label>股票代码<input id="bt-code" type="text" value="sz002555"></label>
+        <label>策略<select id="bt-strategy"></select></label>
+        <label>天数<input id="bt-days" type="number" value="180" min="30" max="1000"></label>
+        <label>初始资金<input id="bt-capital" type="number" value="100000" min="1000"></label>
+        <label>成交方式<select id="bt-fill"><option value="next_open">次日开盘</option><option value="close">当日收盘（旧口径）</option></select></label>
+      </div>
+      <div class="toolbar">
+        <button id="bt-run" class="btn primary">运行回测</button>
+        <button id="bt-compare-btn" class="btn ghost">多策略对比</button>
+        <span id="bt-hint" class="dim"></span>
+      </div>
+      <div id="bt-result"></div>
+      <div class="section-head"><h2>多策略对比</h2></div>
+      <div class="table-wrap"><table id="bt-compare">
+        <thead><tr><th>策略</th><th class="num">总收益</th><th class="num">最大回撤</th><th class="num">夏普</th><th class="num">胜率</th><th class="num">交易</th></tr></thead>
+        <tbody></tbody></table></div>
+    </section>
+
+    <!-- 策略实验室 -->
+    <section id="panel-lab" class="panel hidden">
+      <div class="section-head"><h2>策略信号质量</h2><span class="dim">命中率 50% 约等于抛硬币；衰减大 = 疑似过拟合</span></div>
+      <div class="form-grid">
+        <label>股票代码<input id="lab-code" type="text" value="sz002555"></label>
+        <label>策略<select id="lab-strategy"></select></label>
+        <label>参数组合数<input id="lab-combos" type="number" value="8" min="1" max="20"></label>
+        <label>滚动折数<input id="lab-folds" type="number" value="3" min="1" max="6"></label>
+      </div>
+      <div class="toolbar">
+        <button id="lab-signals-btn" class="btn primary">评估全部策略</button>
+        <button id="lab-optimize-btn" class="btn ghost">参数寻优 + 滚动验证</button>
+        <span id="lab-hint" class="dim"></span>
+      </div>
+      <div class="table-wrap"><table id="lab-signals">
+        <thead><tr><th>策略</th><th class="num">信号数</th><th class="num">命中率</th><th class="num">样本内</th><th class="num">样本外</th><th class="num">衰减</th><th class="num">胜率</th></tr></thead>
+        <tbody></tbody></table></div>
+      <div id="lab-optimize-result"></div>
+    </section>
+
+    <!-- AI 预测 -->
+    <section id="panel-predict" class="panel hidden">
+      <div class="section-head"><h2>AI 预测</h2><span class="dim">模型准确率低于随机基线时会自动降权并标注</span></div>
+      <div class="toolbar">
+        <input id="predict-code" type="text" value="sz002555" placeholder="股票代码">
+        <button id="predict-btn" class="btn primary">开始预测</button>
+        <span id="predict-hint" class="dim"></span>
+      </div>
+      <div id="predict-result"></div>
+    </section>
+
+    <!-- 交易持仓 -->
+    <section id="panel-trades" class="panel hidden">
+      <div class="section-head"><h2>当前持仓</h2></div>
+      <div class="table-wrap"><table id="trades-holdings">
+        <thead><tr><th>代码</th><th>名称</th><th class="num">持仓</th><th class="num">成本</th><th class="num">现价</th><th class="num">浮动盈亏</th></tr></thead>
+        <tbody></tbody></table></div>
+      <div class="section-head"><h2>最近交易</h2></div>
+      <div class="table-wrap"><table id="trades-list">
+        <thead><tr><th>时间</th><th>代码</th><th>方向</th><th class="num">价格</th><th class="num">数量</th><th class="num">盈亏</th><th>策略</th></tr></thead>
+        <tbody></tbody></table></div>
+    </section>
+
     <!-- 报告 -->
     <section id="panel-reports" class="panel hidden">
       <div class="section-head"><h2>已生成报告</h2><span class="dim">HTML 可直接打开；Markdown 为日报正文</span></div>
@@ -86,5 +176,6 @@
   </footer>
 
   <script src="/static/app.js"></script>
+  <script src="/static/p1.js"></script>
 </body>
 </html>
