@@ -1106,6 +1106,11 @@ from app.commands.strategy_lab import register_lab_commands
 
 register_lab_commands(app)
 
+# ==================== 本地 Web UI（从 commands/web.py 加载）====================
+from app.commands.web import register_web_commands
+
+register_web_commands(app)
+
 
 if __name__ == "__main__":
     app()

@@ -61,6 +61,11 @@ DEFAULT_CONFIG = {
         # 订单执行层已实现但暂不开放；设为 true 才会在 CLI 挂载 stock-ai order
         "order_enabled": False,
     },
+    "web": {
+        "host": "127.0.0.1",   # 只绑本机，不暴露局域网
+        "port": 8765,
+        "open_browser": True,
+    },
     "broker": {
         "enabled": False,            # kill switch：默认拒绝真实提交，只出草稿
         "name": "manual",            # manual（人工确认）/ paper

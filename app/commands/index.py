@@ -49,6 +49,7 @@ CATEGORIES = [
         ("dg / dg-p / dg-v", "智能日报 / 推送 / 预览"),
     ]),
     ("报告与其他", [
+        ("web", "启动本地 Web 界面（双击 启动.bat 亦可）"),
         ("report / rp", "HTML 可视化报告"), ("commands / cmd", "本索引"),
         ("show --wide / q --wide", "显示全部表格列"),
         ("notify-list", "推送渠道状态"), ("init", "初始化数据库"),

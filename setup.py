@@ -13,6 +13,8 @@ setup(
         "click>=8.1.0",
         "textual>=0.70.0",
         "httpx>=0.27.0",
+        "fastapi>=0.110.0",
+        "uvicorn>=0.29.0",
         "sqlalchemy>=2.0.0",
         "pandas>=2.0.0",
         "numpy>=1.24.0",

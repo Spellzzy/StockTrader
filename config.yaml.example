@@ -114,6 +114,12 @@ alerts:
   watch_interval: 30         # 看盘模式刷新间隔 (秒)
   cooldown_minutes: 30       # 可重复触发的预警冷却时间（避免每轮重复推送，0=不冷却）
 
+# 本地 Web UI（stock-ai web / 双击 启动.bat）
+web:
+  host: "127.0.0.1"         # 只绑本机，不要改成 0.0.0.0
+  port: 8765
+  open_browser: true        # 启动后自动打开浏览器
+
 # 功能开关
 features:
   order_enabled: false        # 订单执行层暂不开放；true 才会在 CLI 挂载 stock-ai order
