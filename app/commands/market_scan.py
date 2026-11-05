@@ -4,6 +4,8 @@
 完整的定时/推送/落盘流程见 scripts/scheduled_screen.py。
 """
 
+from typing import Optional
+
 import typer
 
 from app.commands import console, Panel, Table, box
@@ -22,6 +24,10 @@ def register_market_scan_commands(app: typer.Typer):
         force: bool = typer.Option(False, "--force", help="忽略今日同参数缓存，强制重跑"),
         no_save: bool = typer.Option(False, "--no-save", help="不落库（调试用）"),
         report: bool = typer.Option(False, "--report", help="额外把 Markdown 报告落到 data/reports"),
+        exclude_star: Optional[bool] = typer.Option(
+            None, "--exclude-star/--no-exclude-star",
+            help="是否跳过科创板 688/689（不传则沿用 config.yaml 的 market_scan.exclude_star）",
+        ),
     ):
         from datetime import datetime
         from pathlib import Path
@@ -34,6 +40,8 @@ def register_market_scan_commands(app: typer.Typer):
         cfg = dict(get_config().get("market_scan", {}) or {})
         if top > 0:
             cfg["top_n"] = top
+        if exclude_star is not None:
+            cfg["exclude_star"] = exclude_star
 
         console.print("[dim]全市场摘选可能需要几分钟（预筛 + 候选 K 线评估）…[/dim]")
         result = MarketScanService(config=cfg).run(

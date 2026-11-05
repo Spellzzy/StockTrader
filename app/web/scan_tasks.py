@@ -23,11 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 class ScanTask:
-    def __init__(self, pool: str, force: bool, top: int):
+    def __init__(self, pool: str, force: bool, top: int, exclude_star=None):
         self.id = uuid.uuid4().hex[:12]
         self.pool = pool
         self.force = force
         self.top = top
+        self.exclude_star = exclude_star
         self.status = "running"          # running / done / failed / cancelled
         self.phase = "starting"          # starting / prefilter / screen / saving
         self.progress = 0
@@ -46,6 +47,7 @@ class ScanTask:
         return {
             "id": self.id,
             "pool": self.pool,
+            "exclude_star": self.exclude_star,
             "status": self.status,
             "phase": self.phase,
             "progress": self.progress,
@@ -71,7 +73,7 @@ class ScanTaskManager:
         self._current: Optional[str] = None
         self._service_factory = service_factory
 
-    def _make_service(self, top: int):
+    def _make_service(self, top: int, exclude_star=None):
         factory = self._service_factory
         if factory:
             return factory(top)
@@ -80,16 +82,22 @@ class ScanTaskManager:
         cfg = dict(get_config().get("market_scan", {}) or {})
         if top > 0:
             cfg["top_n"] = top
+        if exclude_star is not None:
+            cfg["exclude_star"] = bool(exclude_star)
         return MarketScanService(config=cfg)
 
-    def start(self, pool: str = "", force: bool = False, top: int = 0) -> dict:
+    def start(
+        self, pool: str = "", force: bool = False, top: int = 0, exclude_star=None
+    ) -> dict:
         with self._lock:
             if self._current:
                 current = self._tasks.get(self._current)
                 if current and current.status == "running":
                     return {"task_id": current.id, "already_running": True}
 
-            task = ScanTask(pool=pool, force=force, top=top)
+            task = ScanTask(
+                pool=pool, force=force, top=top, exclude_star=exclude_star
+            )
             self._tasks[task.id] = task
             self._current = task.id
             # 只保留最近若干个任务状态
@@ -120,7 +128,7 @@ class ScanTaskManager:
             task.message = f"条件评估 {done}/{total}，命中 {found} 只"
 
         try:
-            svc = self._make_service(task.top)
+            svc = self._make_service(task.top, task.exclude_star)
             task.message = "开始扫描…"
             result = svc.run(
                 pool=task.pool or None,

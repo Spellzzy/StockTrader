@@ -92,6 +92,7 @@
         pool: $('scan-pool').value,
         force: false,
         top: Number($('scan-top').value) || 0,
+        exclude_star: $('scan-exclude-star').checked,
       });
       const payload = d.result || {};
       if (!payload.task_id) throw new Error('未返回任务 ID');
@@ -122,13 +123,17 @@
 
   function loadResult(run) {
     if (!run) return;
-    $('scan-cards').innerHTML = [
+    const cards = [
       card('股票池', esc(String(run.pool || '-'))),
       card('池规模', fmt(run.universe_count || 0, 0)),
       card('预筛候选', fmt(run.candidate_count || 0, 0)),
       card('条件命中', fmt(run.hit_count || 0, 0)),
       card('耗时', fmt(run.duration_seconds || 0, 1) + ' s'),
-    ].join('');
+    ];
+    if (run.star_excluded) {
+      cards.push(card('跳过科创板', fmt(run.star_excluded, 0) + ' 只'));
+    }
+    $('scan-cards').innerHTML = cards.join('');
     $('scan-result-time').textContent = '生成于 '
       + String(run.generated_at || '').replace('T', ' ');
 
@@ -171,8 +176,19 @@
     }
   }
 
+  async function restoreConfig() {
+    try {
+      const cfg = await api('/api/scan/config');
+      $('scan-exclude-star').checked = !!cfg.exclude_star;
+    } catch (e) {
+      // 配置读取失败时保持默认，不影响扫描
+    }
+  }
+
   async function loadScan() {
-    await Promise.all([loadLatest(), loadHistory(), restoreTask()]);
+    await Promise.all([
+      loadLatest(), loadHistory(), restoreTask(), restoreConfig(),
+    ]);
   }
 
   /* 命中表的代码列：全局 linkifyCodes 的捕获委托会 stopPropagation，

@@ -113,6 +113,12 @@ def main():
     parser.add_argument("--no-save", action="store_true", help="不落库（调试用）")
     parser.add_argument("--history", action="store_true", help="只查看历史扫描记录")
     parser.add_argument("--history-limit", type=int, default=10, help="历史记录条数")
+    star_group = parser.add_mutually_exclusive_group()
+    star_group.add_argument("--exclude-star", dest="exclude_star", action="store_true",
+                            help="跳过科创板 688/689")
+    star_group.add_argument("--no-exclude-star", dest="exclude_star", action="store_false",
+                            help="不跳过科创板")
+    parser.set_defaults(exclude_star=None)   # 不传则沿用 config.yaml
     args = parser.parse_args()
 
     logger = setup_logging()
@@ -130,13 +136,15 @@ def main():
 
     from app.services.market_scan_service import MarketScanService
 
-    cfg = {}
-    if args.top > 0:
-        from app.config import get_config
-        cfg = dict(get_config().get("market_scan", {}) or {})
-        cfg["top_n"] = args.top
+    from app.config import get_config
 
-    svc = MarketScanService(config=cfg or None)
+    cfg = dict(get_config().get("market_scan", {}) or {})
+    if args.top > 0:
+        cfg["top_n"] = args.top
+    if args.exclude_star is not None:
+        cfg["exclude_star"] = args.exclude_star
+
+    svc = MarketScanService(config=cfg)
     logger.info("=" * 60)
     logger.info(f"开始全市场摘选 pool={args.pool or 'config'} force={args.force}")
 

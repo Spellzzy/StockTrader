@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 class ScanCancelled(Exception):
     """用户主动取消了本次扫描"""
 
+
+def is_star_market(code: str) -> bool:
+    """科创板：688xxx 主板科创 / 689xxx CDR（normalize 后均为 sh 前缀）"""
+    c = code.strip().lower()
+    return c.startswith(("sh688", "sh689", "688", "689"))
+
 # market_scan 中需要透传给 ScreenerService 的键
 _SCREENER_KEYS = (
     "min_kline", "kline_count", "max_workers", "max_kline_age_days",
@@ -44,7 +50,7 @@ _HASH_KEYS = (
     "pool", "batch_size", "candidate_limit", "min_amount_wan",
     "min_price", "max_price", "max_change_pct", "exclude_st",
     "exclude_delisted", "top_n", "side", "max_workers", "kline_count",
-    "mode", "rules", "inherit_screener",
+    "mode", "rules", "inherit_screener", "exclude_star",
 )
 
 # 全市场摘选的默认规则：与「自选股选股」场景不同，大池需要宽进严出。
@@ -75,6 +81,8 @@ def build_report(result: dict) -> str:
         "## 命中清单",
         "",
     ]
+    if result.get("star_excluded"):
+        lines.insert(3, f"- 跳过科创板：**{result['star_excluded']} 只**（688/689）")
     if not hits:
         lines.append("本次没有股票满足当前条件组合。")
     else:
@@ -178,7 +186,19 @@ class MarketScanService:
         progress_cb: Optional[Callable[[int, int, int], None]] = None,
         cancel_event=None,
     ) -> tuple[list[str], dict]:
-        """批量 quote 预筛，返回 (候选代码, 统计)"""
+        """批量 quote 预筛，返回 (候选代码, 统计)
+
+        exclude_star=True 时在发 quote 之前就把 688/689 剔除，
+        既避免无谓的子进程调用，也保证它们不会进入条件评估。
+        """
+        universe = len(codes)
+        star_excluded = 0
+        if self.cfg.get("exclude_star", False):
+            filtered = [c for c in codes if not is_star_market(c)]
+            star_excluded = universe - len(filtered)
+            codes = filtered
+            logger.info(f"跳过科创板 {star_excluded} 只")
+
         batch_size = max(1, int(self.cfg.get("batch_size", 50)))
         rows: list[dict] = []
 
@@ -208,7 +228,8 @@ class MarketScanService:
         limit = int(self.cfg.get("candidate_limit", 600) or 0)
         candidates = rows[:limit] if limit > 0 else rows
         return [r["code"] for r in candidates], {
-            "universe": len(codes),
+            "universe": universe,
+            "star_excluded": star_excluded,
             "quoted_pass": len(rows),
             "candidates": len(candidates),
         }
@@ -364,6 +385,7 @@ class MarketScanService:
             "side": side,
             "params_hash": params_hash,
             "universe_count": stats["universe"],
+            "star_excluded": stats.get("star_excluded", 0),
             "quoted_pass": stats["quoted_pass"],
             "candidate_count": stats["candidates"],
             "scanned_count": len(candidates),

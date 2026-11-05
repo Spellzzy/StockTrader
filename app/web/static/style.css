@@ -103,6 +103,7 @@ tr.clickable { cursor: pointer; }
 .autorefresh { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
   color: var(--dim); cursor: pointer; white-space: nowrap; }
 .autorefresh input { accent-color: var(--accent); width: 14px; height: 14px; }
+.toggle.block { display: flex; margin-bottom: 10px; }
 .mini-select { background: var(--surface); border: 1px solid var(--line);
   border-radius: 6px; color: var(--fg); padding: 5px 6px; font-size: 12px; }
 .alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

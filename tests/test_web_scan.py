@@ -162,8 +162,8 @@ class FakeManager:
     def __init__(self):
         self.start_calls = []
 
-    def start(self, pool="", force=False, top=0):
-        self.start_calls.append((pool, force, top))
+    def start(self, pool="", force=False, top=0, exclude_star=None):
+        self.start_calls.append((pool, force, top, exclude_star))
         return {"task_id": "task-0001", "already_running": False}
 
     def get(self, task_id):
@@ -257,10 +257,32 @@ def test_history_and_run_detail(client):
     assert client.get("/api/scan/latest").json()["data"]["run"]["id"] == 1
 
 
+def test_start_passes_exclude_star(client, monkeypatch):
+    mgr = tasks_mod.SCAN_TASKS
+    r = client.post("/api/scan/start", json={
+        **_body("scan-client-0010"), "exclude_star": True,
+    })
+    assert r.status_code == 200
+    assert mgr.start_calls[-1][3] is True
+
+    r2 = client.post("/api/scan/start", json={
+        **_body("scan-client-0011"), "exclude_star": False,
+    })
+    assert r2.status_code == 200
+    assert mgr.start_calls[-1][3] is False
+
+
+def test_scan_config_endpoint(client, isolate_config):
+    isolate_config["market_scan"] = {"exclude_star": True, "top_n": 7}
+    d = client.get("/api/scan/config").json()["data"]
+    assert d["exclude_star"] is True and d["top_n"] == 7
+
+
 def test_frontend_scan_page_is_wired(client):
     html = client.get("/").text
     for marker in ("data-tab=\"scan\"", "panel-scan", "scan-progress",
-                   "scan-hits", "scan-history", "/static/scan.js"):
+                   "scan-hits", "scan-history", "scan-exclude-star",
+                   "/static/scan.js"):
         assert marker in html, f"index.html 缺少 {marker}"
 
     order = [html.index("/static/" + n) for n in
@@ -269,8 +291,9 @@ def test_frontend_scan_page_is_wired(client):
 
     js = client.get("/static/scan.js").text
     for marker in ("/api/scan/start", "/api/scan/status", "/api/scan/cancel",
-                   "/api/scan/runs", "/api/scan/run/", "register('scan'",
-                   "startPolling", "loadResult", "td.stock-link"):
+                   "/api/scan/runs", "/api/scan/run/", "/api/scan/config",
+                   "register('scan'", "startPolling", "loadResult",
+                   "td.stock-link", "exclude_star", "star_excluded"):
         assert marker in js, f"scan.js 缺少 {marker}"
 
     ux_js = client.get("/static/ux.js").text

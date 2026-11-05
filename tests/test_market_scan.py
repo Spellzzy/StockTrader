@@ -211,6 +211,70 @@ def test_params_hash_changes_with_config_and_actual_pool(svc):
     assert svc.params_hash("all_a", "sell") != svc.params_hash("all_a", "buy")
 
 
+def test_is_star_market_recognises_688_and_689_only():
+    from app.services.market_scan_service import is_star_market
+
+    assert is_star_market("sh688001") is True
+    assert is_star_market("sh689009") is True
+    assert is_star_market("688001") is True
+    for code in ("sh600001", "sz300001", "sz000001", "sh605099"):
+        assert is_star_market(code) is False
+
+
+def test_exclude_star_filters_before_quote(svc, monkeypatch):
+    seen = []
+    extra = dict(QUOTES)
+    extra.update({
+        "sh688001": _quote("sh688001", "科创股", amount=99999),
+        "sh689002": _quote("sh689002", "CDR股", amount=99999),
+        "sz300001": _quote("sz300001", "创业板", amount=9000),
+    })
+
+    def fake_quote(self, *codes, **kw):
+        seen.extend(codes)
+        return {c: extra[c] for c in codes if c in extra}
+
+    monkeypatch.setattr(FakeClient, "quote", fake_quote)
+    codes = ["sh600001", "sh688001", "sh689002", "sz300001"]
+    svc.cfg["exclude_star"] = True
+
+    candidates, stats = svc.prefilter(codes)
+
+    assert stats["universe"] == 4           # 池规模仍是原始值
+    assert stats["star_excluded"] == 2
+    assert "sh688001" not in seen and "sh689002" not in seen  # 连 quote 都没发
+    assert set(candidates) == {"sh600001", "sz300001"}
+
+
+def test_star_codes_kept_when_option_off(svc, monkeypatch):
+    extra = dict(QUOTES)
+    extra["sh688001"] = _quote("sh688001", "科创股", amount=99999)
+    monkeypatch.setattr(FakeClient, "quote", lambda self, *codes, **kw:
+                        {c: extra[c] for c in codes if c in extra})
+    svc.cfg["exclude_star"] = False
+
+    candidates, stats = svc.prefilter(["sh600001", "sh688001"])
+    assert "sh688001" in candidates and stats["star_excluded"] == 0
+
+
+def test_params_hash_includes_exclude_star(svc):
+    a = svc.params_hash()
+    svc.cfg["exclude_star"] = True
+    assert svc.params_hash() != a
+
+
+def test_report_shows_star_excluded():
+    from scripts.scheduled_screen import build_report
+
+    text = build_report({
+        "generated_at": "2026-11-05T15:30:00", "pool": "all_a",
+        "universe_count": 5000, "star_excluded": 120,
+        "candidate_count": 600, "hit_count": 2, "duration_seconds": 12.3,
+        "hits": [],
+    })
+    assert "跳过科创板" in text and "120" in text
+
+
 def test_report_contains_hits_and_stats():
     from scripts.scheduled_screen import build_report
 

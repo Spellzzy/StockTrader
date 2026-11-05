@@ -1136,6 +1136,7 @@ class ScanStartWrite(WriteBase):
     pool: str = ""
     force: bool = False
     top: int = Field(0, ge=0, le=100)
+    exclude_star: bool | None = None   # None = 沿用 config.yaml 的 market_scan.exclude_star
 
 
 @app.post("/api/scan/start")
@@ -1147,7 +1148,10 @@ async def scan_start(req: ScanStartWrite) -> dict:
     from app.web.scan_tasks import SCAN_TASKS
 
     def execute():
-        return SCAN_TASKS.start(pool=req.pool, force=req.force, top=req.top)
+        return SCAN_TASKS.start(
+            pool=req.pool, force=req.force, top=req.top,
+            exclude_star=req.exclude_star,
+        )
 
     return await _write(req, "scan", execute)
 
@@ -1185,6 +1189,20 @@ async def scan_run(run_id: int) -> dict:
     if run is None:
         raise HTTPException(status_code=404, detail="扫描记录不存在")
     return ok({"run": run})
+
+
+@app.get("/api/scan/config")
+async def scan_config() -> dict:
+    """回显 market_scan 默认配置，供 Web 表单初始化（避免勾选框默认值覆盖 config）"""
+    from app.config import get_config
+
+    cfg = get_config().get("market_scan", {}) or {}
+    return ok({
+        "exclude_star": bool(cfg.get("exclude_star", False)),
+        "pool": cfg.get("pool", "all_a"),
+        "top_n": int(cfg.get("top_n", 20) or 20),
+        "candidate_limit": int(cfg.get("candidate_limit", 600) or 600),
+    })
 
 
 @app.get("/api/scan/latest")

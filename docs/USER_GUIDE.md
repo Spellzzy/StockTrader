@@ -1370,6 +1370,8 @@ def my_custom(ctx: ScreenContext, params: dict) -> ConditionResult:
 stock-ai scan-market --pool all_a
 stock-ai scan-market --pool watchlist --top 10 --report
 stock-ai scan-market --pool all_a --force        # 忽略今日同参数缓存
+stock-ai scan-market --pool all_a --exclude-star # 跳过科创板 688/689
+stock-ai scan-market --no-exclude-star          # 明确不跳过（覆盖 config）
 
 # 2) 查看历史扫描记录
 stock-ai scan-history --limit 10
@@ -1377,6 +1379,7 @@ stock-ai scan-history --limit 10
 # 3) 定时脚本（交易日判断 + 报告落盘 + 可选推送）
 python scripts/scheduled_screen.py --no-push
 python scripts/scheduled_screen.py --pool all_a:refresh --force
+python scripts/scheduled_screen.py --exclude-star --no-push
 python scripts/scheduled_screen.py --history
 ```
 
@@ -1399,6 +1402,7 @@ python scripts/scheduled_screen.py --history
 | `min_price` / `max_price` | 2 / 500 | 价格区间 |
 | `max_change_pct` | 9.8 | 排除涨跌停附近，0 = 不限 |
 | `exclude_st` / `exclude_delisted` | true / true | 过滤 ST、退市/停牌 |
+| `exclude_star` | false | 跳过科创板 `sh688xxx` / `sh689xxx`（**在发 quote 前**过滤，不占用行情调用；池规模仍按原始数统计） |
 | `top_n` / `side` | 20 / buy | 展示数量、买入或卖出条件 |
 | `max_workers` / `kline_count` | 6 / 90 | 候选 K 线并发数、K 线根数 |
 | `mode` / `rules` | `atleast:2` / 内置 5 条 | **摘选专用规则**，见下 |
@@ -1433,6 +1437,8 @@ python scripts/scheduled_screen.py --history
 - 直接写自己的 `rules` 列表（可用条件见 `stock-ai sn --list-conditions`）
 
 规则与模式都参与 `params_hash`，改规则后当天重新扫描会生成新记录，不会误复用旧结果。
+`exclude_star` 同样参与哈希：勾不勾选科创板视作两套参数，各自独立缓存；结果里会记录
+`star_excluded`（跳过了多少只），报告与 Web 页面都会显示。
 
 ### Web 页面「市场摘选」
 
@@ -1440,7 +1446,7 @@ python scripts/scheduled_screen.py --history
 
 | 区块 | 说明 |
 |---|---|
-| 扫描表单 | 选股票池（自选 / 全 A / 持仓）、填 Top N，勾选「确认执行扫描」后点开始 |
+| 扫描表单 | 选股票池（自选 / 全 A / 持仓）、填 Top N、**「跳过科创板」勾选框**、勾选「确认执行扫描」后点开始。勾选框初始值来自 `config.yaml`，改动后才覆盖配置 |
 | 进度条 | 两阶段实时进度：预筛 0~40%、条件评估 40~95%、落库 95~100%；显示已处理/总数与当前命中数 |
 | 取消 | 「取消」按钮在批次边界中止；最多等当前评估批次（默认 50 只）跑完，不会留半截结果 |
 | 结果 | 池规模/候选/命中/耗时卡片 + Top N 表格（命中条件数、条件名）；代码列可直接点开个股详情 |

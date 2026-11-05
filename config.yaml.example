@@ -217,6 +217,7 @@ market_scan:
   max_change_pct: 9.8        # 排除涨跌停附近，0 = 不限
   exclude_st: true
   exclude_delisted: true
+  exclude_star: false        # 跳过科创板 688/689；Web 勾选框与 --exclude-star 可临时覆盖
   top_n: 20                  # 报告/日报里展示的命中数
   side: "buy"                # buy / sell
   max_workers: 6             # 候选 K 线并发数
