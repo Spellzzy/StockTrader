@@ -73,6 +73,8 @@
 | 使用体验 | ✅ | `q` 支持空格分隔多股票、表格列宽自适应 + `--wide`、`commands` 全命令索引 |
 | 本地 Web UI | ✅ | 双击 `启动.bat` 打开 12 个页面，详见下方分期 |
 | 持仓手工校正 | ✅ | `manual_override` 锁定行跳过重建；编辑 / 解锁 / 强制重建 |
+| 全市场摘选（P1） | ✅ | 批量 quote 预筛 + 复用 screener 条件 + `screen_runs` 落库去重 + 定时脚本 + 日报附加段；`stock-ai scan-market/scan-history` |
+| 全市场摘选（P2） | ⬜ | Web 页面 + 后台长任务进度/取消 + 历史结果回看 |
 | 执行层 / 订单编排（阶段 0+1） | ⏸ **已实现，冻结不开放** | 代码与测试保留，CLI 入口由 `features.order_enabled=false` 关闭 |
 | QMT / Ptrade 真实通道（阶段 3） | ⬜ 未做 | 需券商量化权限与测试环境，未经验证不接 |
 

@@ -202,3 +202,24 @@ screener:
   #   sector_strong / ma_bull / macd_golden / macd_dead
   #   rsi_below / rsi_above / breakout / bearish_volume
   #   loss_pct / profit_pct
+
+# ── 全市场摘选（独立于上面的自选股选股） ──
+# 流程: 全A代码池 → 批量 quote 廉价预筛 → 对候选并发跑 screener 条件 → 打分排序 → 落库
+# 运行: python scripts/scheduled_screen.py --no-push
+# 环境变量覆盖示例: STOCK_AI_MARKET_SCAN__MIN_AMOUNT_WAN=5000
+market_scan:
+  pool: "all_a"              # all_a / watchlist / portfolio / file:./codes.txt / 逗号分隔
+  batch_size: 50             # 预筛时每批 quote 的数量
+  candidate_limit: 600       # 预筛后最多保留多少只（按成交额降序），0 = 不限
+  min_amount_wan: 3000       # 成交额下限（万元），过滤僵尸股
+  min_price: 2.0
+  max_price: 500.0
+  max_change_pct: 9.8        # 排除涨跌停附近，0 = 不限
+  exclude_st: true
+  exclude_delisted: true
+  top_n: 20                  # 报告/日报里展示的命中数
+  side: "buy"                # buy / sell
+  max_workers: 6             # 候选 K 线并发数
+  kline_count: 90
+  all_a_cache_days: 7
+  pool_size_limit: 0

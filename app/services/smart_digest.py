@@ -151,9 +151,18 @@ class SmartDigestService:
                 except Exception as e:
                     logger.error(f"LLM 分析 {code} 失败: {e}")
 
-        # 5. 组装日报
+        # 5. 读取最近一次全市场摘选（只读快照，绝不在这里重跑扫描）
+        try:
+            from app.services.market_scan_service import MarketScanService
+            market_picks = MarketScanService().latest() or {}
+        except Exception as e:
+            logger.warning(f"读取全市场摘选结果失败: {e}")
+            market_picks = {}
+
+        # 6. 组装日报
         date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         digest = {
+            "market_picks": market_picks,
             "date": date_str,
             "total": len(codes),
             "scan_results": scan_results,
@@ -278,6 +287,28 @@ class SmartDigestService:
 
                 lines.append("")
 
+        # 全市场摘选：只读最近一次扫描快照，不在这里重跑
+        picks = digest.get("market_picks") or {}
+        if picks.get("run_date"):
+            lines.append("### 🔎 今日全市场摘选\n")
+            lines.append(
+                f"> 池 {picks.get('pool', '-')} {picks.get('universe_count', 0)} 只 → "
+                f"预筛 {picks.get('candidate_count', 0)} 只 → "
+                f"命中 {picks.get('hit_count', 0)} 只"
+                f"（{picks.get('duration_seconds', 0)}s）\n"
+            )
+            if picks.get("hits"):
+                for i, h in enumerate(picks["hits"][:10], 1):
+                    reasons = "、".join(str(r[0]) for r in (h.get("matched") or [])[:3])
+                    lines.append(
+                        f"- **{h.get('name', '')}** ({h['code']}) — "
+                        f"命中 {h.get('matched_count', 0)}/{h.get('total_rules', 0)} 条"
+                        + (f"：{reasons}" if reasons else "")
+                    )
+            else:
+                lines.append("本次没有股票满足当前条件组合。")
+            lines.append("\n*摘选仅为技术面信号，不构成投资建议*\n")
+
         # 汇总
         total = digest["total"]
         bull_count = len(bullish)
@@ -360,6 +391,20 @@ class SmartDigestService:
             f"{len(bullish)}涨 {len(neutral)}平 {len(bearish)}跌 | "
             f"⏰ {digest['date']}[/dim]"
         )
+
+        picks = digest.get("market_picks") or {}
+        if picks.get("run_date"):
+            lines.append("[bold cyan]🔎 今日全市场摘选[/bold cyan]")
+            if picks.get("hits"):
+                for i, h in enumerate(picks["hits"][:5], 1):
+                    lines.append(
+                        f"  {i}. [bold]{h.get('name', '')}[/bold] ({h['code']}) — "
+                        f"命中 {h.get('matched_count', 0)} 条"
+                    )
+            else:
+                lines.append(
+                    f"  [dim]扫描 {picks.get('candidate_count', 0)} 只候选，本次无命中[/dim]"
+                )
 
         return "\n".join(lines)
 

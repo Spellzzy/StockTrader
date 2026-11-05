@@ -1111,6 +1111,11 @@ from app.commands.web import register_web_commands
 
 register_web_commands(app)
 
+# ==================== 全市场摘选（从 commands/market_scan.py 加载）====================
+from app.commands.market_scan import register_market_scan_commands
+
+register_market_scan_commands(app)
+
 
 if __name__ == "__main__":
     app()

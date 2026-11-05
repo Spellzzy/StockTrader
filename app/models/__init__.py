@@ -9,9 +9,10 @@ from app.models.portfolio import PortfolioRecord
 from app.models.alert import Alert, AlertHistory
 from app.models.order import OrderRecord, OrderEventRecord
 from app.models.web_write import WebWriteRecord
+from app.models.screen_run import ScreenRun
 
 __all__ = [
     "Base", "Trade", "Stock", "PortfolioRecord", "Alert", "AlertHistory",
-    "OrderRecord", "OrderEventRecord", "WebWriteRecord",
+    "OrderRecord", "OrderEventRecord", "WebWriteRecord", "ScreenRun",
     "normalize_stock_code", "normalize_stock_codes", "parse_stock_codes", "is_index_code",
 ]

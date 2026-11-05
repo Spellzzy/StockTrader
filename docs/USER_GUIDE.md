@@ -25,6 +25,8 @@
   - [实时看盘](#实时看盘)
   - [智能日报](#智能日报)
 - [回测引擎](#回测引擎)
+- [选股引擎（Screener）](#选股引擎screener)
+- [全市场摘选（Market Scan）](#全市场摘选market-scan)
 - [消息推送](#消息推送)
 - [数据说明](#数据说明)
 - [常见问题](#常见问题)
@@ -1348,6 +1350,69 @@ def my_custom(ctx: ScreenContext, params: dict) -> ConditionResult:
 ```
 
 注册后立即可在 config.yaml 中引用，无需重启外部服务。
+
+---
+
+## 全市场摘选（Market Scan）
+
+智能日报的池子只有**自选股**；想对大盘做摘选，用下面这套（复用上面的 screener 条件，不重写因子）。
+
+### 为什么要预筛
+
+条件评估对每只股票都要拉一次 K 线（一次 `stock-data` 子进程）。全 A ≈ 5000 只直接跑要
+20~40 分钟，所以先做**只依赖批量 quote 的廉价预筛**（5000/50 = 100 次调用），
+把池子降到几百只，再并发跑条件评估。实测自选小池 11 只 → 预筛 9 只 → 全流程 4~7 秒。
+
+### 三种入口
+
+```bash
+# 1) 命令行直接跑（结果落库、打印命中表）
+stock-ai scan-market --pool all_a
+stock-ai scan-market --pool watchlist --top 10 --report
+stock-ai scan-market --pool all_a --force        # 忽略今日同参数缓存
+
+# 2) 查看历史扫描记录
+stock-ai scan-history --limit 10
+
+# 3) 定时脚本（交易日判断 + 报告落盘 + 可选推送）
+python scripts/scheduled_screen.py --no-push
+python scripts/scheduled_screen.py --pool all_a:refresh --force
+python scripts/scheduled_screen.py --history
+```
+
+定时脚本产出 `data/reports/screen_YYYYMMDD.md`，Windows 计划任务示例见脚本头部注释
+（必须用绝对路径，收盘后 15:30 跑一次即可）。
+
+### 日报自动附带
+
+只要当天跑过一次扫描，`SmartDigestService` 生成日报时会**读取最近一次结果快照**，
+在末尾追加「今日全市场摘选」段：池规模 → 预筛候选 → 命中数 → Top 10 与命中的条件名。
+日报**不会重跑扫描**；没有命中时也会说明扫了多少只，不会整段消失。
+
+### 配置（`config.yaml` 的 `market_scan` 段）
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `pool` | `all_a` | `all_a` / `watchlist` / `portfolio` / `file:...` / 逗号分隔代码 |
+| `batch_size` / `candidate_limit` | 50 / 600 | 每批 quote 数、预筛后最多保留多少只（按成交额降序） |
+| `min_amount_wan` | 3000 | 成交额下限（万元），过滤僵尸股 |
+| `min_price` / `max_price` | 2 / 500 | 价格区间 |
+| `max_change_pct` | 9.8 | 排除涨跌停附近，0 = 不限 |
+| `exclude_st` / `exclude_delisted` | true / true | 过滤 ST、退市/停牌 |
+| `top_n` / `side` | 20 / buy | 展示数量、买入或卖出条件 |
+| `max_workers` / `kline_count` | 6 / 90 | 候选 K 线并发数、K 线根数 |
+
+支持 `STOCK_AI_MARKET_SCAN__MIN_AMOUNT_WAN=5000` 这类环境变量覆盖。完整示例见
+`config.yaml.example`。
+
+### 结果落库与去重
+
+每次扫描写入 `screen_runs` 表（迁移 `c3d81e7a9452`）：日期、池、参数哈希、各阶段数量、
+耗时、Top N 结果 JSON。**同一天 + 同一参数（含命令行覆盖的池/方向）只跑一次**，
+重复调用直接复用并提示；`--force` 可强制重跑。想接 Web 页面或历史回看，直接读
+`MarketScanService.latest()` / `list_runs()` 即可。
+
+> ⚠️ 摘选结果仅为技术面信号，不构成投资建议；筛选用的是截至当日收盘的数据，不含未来信息。
 
 ---
 
