@@ -51,6 +51,12 @@
     if (!item) {
       item = document.createElement('div');
       box.appendChild(item);
+      // 点一下立即关闭；节点仍留在池里复用
+      item.addEventListener('click', () => {
+        clearTimeout(item._hideTimer);
+        item.className = 'toast free hidden';
+        item.textContent = '';
+      });
     }
     item.className = 'toast ' + type;
     item.textContent = msg;
@@ -526,6 +532,26 @@
       if (willOpen) { pop.classList.remove('hidden'); await render(); search.focus(); }
     });
     search.addEventListener('input', applyFilter);
+    search.addEventListener('keydown', e => {
+      const visible = Array.from(items.querySelectorAll('.picker-item'))
+        .filter(b => !b.classList.contains('hidden'));
+      if (!visible.length) return;
+      let idx = visible.findIndex(b => b.classList.contains('kbd-active'));
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (idx >= 0) visible[idx].classList.remove('kbd-active');
+        idx = e.key === 'ArrowDown'
+          ? (idx + 1) % visible.length
+          : (idx <= 0 ? visible.length - 1 : idx - 1);
+        visible[idx].classList.add('kbd-active');
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        (idx >= 0 ? visible[idx] : visible[0]).click();
+      } else if (e.key === 'Escape') {
+        pop.classList.add('hidden');
+        input.focus();
+      }
+    });
     pop.addEventListener('click', e => e.stopPropagation());
   }
   /* 延后到 DOM 就绪再改结构：文档解析期间搬动 input 会让宿主 WebView
@@ -651,14 +677,88 @@
     else if (e.key === '?' && !typing) { e.preventDefault(); openCmd(true); }
   });
 
+  /* ==================== 7. 布局偏好与操作手感 ==================== */
+
+  const densityBox = $('density-compact');
+  function applyDensity(compact) {
+    if (document.body) document.body.classList.toggle('density-compact', compact);
+    if (densityBox) densityBox.checked = compact;
+    try { LS.setItem('st.density', compact ? 'compact' : 'comfortable'); } catch (e) { /* ignore */ }
+  }
+  if (densityBox) densityBox.addEventListener('change', () => applyDensity(densityBox.checked));
+
+  const toTop = $('to-top');
+  function syncToTop() {
+    if (toTop) toTop.classList.toggle('hidden', (window.scrollY || 0) < 400);
+  }
+  if (toTop) toTop.addEventListener('click', () => {
+    if (window.scrollTo) window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  if (window.addEventListener) {
+    window.addEventListener('scroll', syncToTop, { passive: true });
+  }
+
+  /* 表单回车提交：容器 data-enter 指向默认按钮。
+     picker 搜索框与命令面板有各自的 Enter 语义，必须排除。 */
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const el = e.target;
+    if (!el || !/^(INPUT|SELECT)$/.test(el.tagName || '')) return;
+    if (el.closest('.picker-pop') || el.closest('#cmd-panel')) return;
+    const host = el.closest('[data-enter]');
+    if (!host) return;
+    const btn = $(host.dataset.enter);
+    if (!btn || btn.disabled) return;
+    e.preventDefault();
+    btn.click();
+  });
+
+  /* 确认勾选门禁：没勾「确认执行」时提交按钮不可用，写完后自动重新禁用 */
+  function syncConfirmGates() {
+    document.querySelectorAll('.confirm[data-gate]').forEach(label => {
+      const box = label.querySelector('input[type=checkbox]');
+      if (!box) return;
+      (label.dataset.gate || '').split(',').forEach(id => {
+        const btn = $(id.trim());
+        if (!btn) return;
+        btn.disabled = !box.checked;
+        btn.title = box.checked ? '' : '请先勾选「确认执行」';
+      });
+    });
+  }
+  ST.syncConfirmGates = syncConfirmGates;
+  document.querySelectorAll('.confirm[data-gate] input[type=checkbox]').forEach(box =>
+    box.addEventListener('change', syncConfirmGates));
+
+  /* 横向滚动的 tab 栏：让当前项始终可见 */
+  function scrollActiveTabIntoView() {
+    const btn = document.querySelector('.tab.active');
+    const bar = document.querySelector('.tabs');
+    if (!btn || !bar || !btn.scrollIntoView) return;
+    const left = btn.offsetLeft || 0, right = left + (btn.offsetWidth || 0);
+    if (left < bar.scrollLeft || right > bar.scrollLeft + bar.clientWidth) {
+      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }
+
   document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
     try { LS.setItem('st.tab', btn.dataset.tab); } catch (e) { /* ignore */ }
+    scrollActiveTabIntoView();
   }));
   function initAfterDom() {
     mountPickers();
-    let saved = null;
-    try { saved = LS.getItem('st.tab'); } catch (e) { /* ignore */ }
-    if (saved && document.querySelector('.tab[data-tab="' + saved + '"]')) goTab(saved);
+    let saved = null, compact = false;
+    try {
+      saved = LS.getItem('st.tab');
+      compact = LS.getItem('st.density') === 'compact';
+    } catch (e) { /* ignore */ }
+    applyDensity(compact);
+    syncConfirmGates();
+    syncToTop();
+    if (saved && document.querySelector('.tab[data-tab="' + saved + '"]')) {
+      goTab(saved);
+      scrollActiveTabIntoView();
+    }
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initAfterDom);

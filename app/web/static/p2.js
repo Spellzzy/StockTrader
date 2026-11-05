@@ -37,6 +37,8 @@ async function doWrite(btn, path, body, opts = {}) {
     return null;
   } finally {
     btn.disabled = false; btn.textContent = original;
+    // doWrite 成功后会清掉确认勾选，门禁要同步回「未勾选 → 按钮禁用」
+    if (window.ST && window.ST.syncConfirmGates) window.ST.syncConfirmGates();
   }
 }
 
@@ -342,6 +344,26 @@ function bindNameFill(codeId, nameId) {
 }
 bindNameFill('pos-code', 'pos-name');
 bindNameFill('w-code', 'w-name');
+
+/* 金额实时预估：价格 × 数量，输入时即时显示 */
+function bindAmountPreview() {
+  [
+    { price: 'w-price', qty: 'w-qty', out: 'w-amount', label: '预估金额' },
+    { price: 'pos-cost', qty: 'pos-qty', out: 'pos-amount', label: '预估成本' },
+  ].forEach(p => {
+    const a = $(p.price), b = $(p.qty), out = $(p.out);
+    if (!a || !b || !out) return;
+    const sync = () => {
+      const v = Number(a.value) * Number(b.value);
+      out.textContent = Number.isFinite(v) && v > 0
+        ? p.label + ' ' + fmt(v, 2) + ' 元' : '';
+    };
+    a.addEventListener('input', sync);
+    b.addEventListener('input', sync);
+    sync();
+  });
+}
+bindAmountPreview();
 
 function openPosEdit(btn, mode = 'edit') {
   const box = $('#pos-edit-box');

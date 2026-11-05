@@ -25,6 +25,8 @@
         <option value="60000">60 秒</option>
         <option value="120000">2 分钟</option>
       </select>
+      <label class="autorefresh" title="紧凑布局：减小间距与行高，偏好保存在本机">
+        <input id="density-compact" type="checkbox"> 紧凑</label>
       <span id="version" class="version"></span>
       <button id="refresh" class="btn ghost" title="刷新当前页">↻ 刷新</button>
       <button id="cmd-open" class="btn ghost" title="命令面板 (Ctrl+K)">⌘</button>
@@ -35,15 +37,15 @@
     <button class="tab active" data-tab="overview">总览</button>
     <button class="tab" data-tab="market">行情</button>
     <button class="tab" data-tab="analysis">统计</button>
-    <button class="tab" data-tab="backtest">回测</button>
+    <button class="tab tab-group-start" data-tab="backtest" title="分析类">回测</button>
     <button class="tab" data-tab="lab">策略实验室</button>
     <button class="tab" data-tab="scan">市场摘选</button>
     <button class="tab" data-tab="predict">AI 预测</button>
-    <button class="tab" data-tab="trades">交易持仓</button>
+    <button class="tab tab-group-start" data-tab="trades" title="交易类">交易持仓</button>
     <button class="tab" data-tab="write">录入交易</button>
     <button class="tab" data-tab="alerts">预警</button>
     <button class="tab" data-tab="paper">模拟盘</button>
-    <button class="tab" data-tab="settings">设置</button>
+    <button class="tab tab-group-start" data-tab="settings" title="系统类">设置</button>
     <button class="tab" data-tab="reports">报告</button>
     <span class="tabs-note">仅监听 127.0.0.1 · 本机单用户</span>
   </nav>
@@ -84,12 +86,12 @@
         <span id="watchlist-hint" class="dim"></span>
       </div>
 
-      <div class="result-box">
+      <div class="result-box" data-enter="wl-add">
         <div class="form-grid">
           <label>股票代码<input id="wl-code" type="text" placeholder="如 600519 或 sh600519"></label>
           <label>备注（关注理由）<input id="wl-note" type="text" placeholder="可选；也可点表格里的「改备注」"></label>
         </div>
-        <label class="confirm"><input id="wl-confirm" type="checkbox"> 确认执行自选变更</label>
+        <label class="confirm" data-gate="wl-add,wl-note-save"><input id="wl-confirm" type="checkbox"> 确认执行自选变更</label>
         <div class="toolbar">
           <button id="wl-add" class="btn primary">添加自选</button>
           <button id="wl-note-save" class="btn ghost">保存备注</button>
@@ -209,7 +211,7 @@
         <span id="pos-summary" class="dim"></span>
       </div>
 
-      <div id="pos-edit-box" class="result-box hidden">
+      <div id="pos-edit-box" class="result-box hidden" data-enter="pos-save">
         <h3><span id="pos-edit-title">编辑持仓</span> · <span id="pos-edit-code"></span></h3>
         <div class="form-grid">
           <label id="pos-code-wrap">股票代码<input id="pos-code" type="text" placeholder="如 600519"></label>
@@ -218,10 +220,11 @@
           <label>名称<input id="pos-name" type="text"></label>
           <label>校正理由<input id="pos-reason" type="text" placeholder="如：补录历史遗漏"></label>
         </div>
-        <label class="confirm"><input id="pos-confirm" type="checkbox"> 确认执行手工校正（该行将被锁定）</label>
+        <label class="confirm" data-gate="pos-save"><input id="pos-confirm" type="checkbox"> 确认执行手工校正（该行将被锁定）</label>
         <div class="toolbar">
           <button id="pos-save" class="btn primary">保存校正</button>
           <button id="pos-cancel" class="btn ghost">取消</button>
+          <span id="pos-amount" class="dim"></span>
           <span id="pos-hint" class="dim"></span>
         </div>
       </div>
@@ -243,7 +246,7 @@
     <!-- 录入交易 -->
     <section id="panel-write" class="panel hidden">
       <div class="section-head"><h2>录入交易</h2><span class="dim">写操作需勾选确认，且每个请求带幂等键</span></div>
-      <div class="result-box">
+      <div class="result-box" data-enter="w-submit">
         <div class="form-grid">
           <label>方向<select id="w-side"><option value="buy">买入</option><option value="sell">卖出</option></select></label>
           <label>股票代码<input id="w-code" type="text" placeholder="如 600519"></label>
@@ -253,8 +256,9 @@
           <label>策略（可选）<input id="w-strategy" type="text"></label>
           <label>理由（可选）<input id="w-reason" type="text"></label>
         </div>
-        <label class="confirm"><input id="w-confirm" type="checkbox"> 确认执行（会写入 trades 表并重建持仓）</label>
-        <div class="toolbar"><button id="w-submit" class="btn primary">提交交易</button><span id="w-hint" class="dim"></span></div>
+        <label class="confirm" data-gate="w-submit"><input id="w-confirm" type="checkbox"> 确认执行（会写入 trades 表并重建持仓）</label>
+        <div class="toolbar"><button id="w-submit" class="btn primary">提交交易</button>
+          <span id="w-amount" class="dim"></span><span id="w-hint" class="dim"></span></div>
       </div>
       <div id="w-result"></div>
     </section>
@@ -266,14 +270,14 @@
         <thead><tr><th>代码</th><th>条件</th><th class="num">阈值</th><th>状态</th><th>备注</th><th>操作</th></tr></thead>
         <tbody></tbody></table></div>
       <div class="section-head"><h2>新增预警</h2></div>
-      <div class="result-box">
+      <div class="result-box" data-enter="a-add">
         <div class="form-grid">
           <label>股票代码<input id="a-code" type="text" placeholder="如 600519"></label>
           <label>条件类型<select id="a-type"></select></label>
           <label>阈值（信号类可留空）<input id="a-threshold" type="number" step="0.01"></label>
           <label>备注<input id="a-note" type="text"></label>
         </div>
-        <label class="confirm"><input id="a-confirm" type="checkbox"> 确认新增预警</label>
+        <label class="confirm" data-gate="a-add"><input id="a-confirm" type="checkbox"> 确认新增预警</label>
         <div class="toolbar"><button id="a-add" class="btn primary">新增</button><span id="a-hint" class="dim"></span></div>
       </div>
     </section>
@@ -293,14 +297,14 @@
             <tbody></tbody></table></div></div>
       </div>
       <div class="section-head"><h2>虚拟下单</h2></div>
-      <div class="result-box">
+      <div class="result-box" data-enter="p-submit">
         <div class="form-grid">
           <label>方向<select id="p-side"><option value="buy">买入</option><option value="sell">卖出</option></select></label>
           <label>股票代码<input id="p-code" type="text"></label>
           <label>价格<input id="p-price" type="number" step="0.01" min="0.01"></label>
           <label>数量（股）<input id="p-qty" type="number" value="100" min="100" step="100"></label>
         </div>
-        <label class="confirm"><input id="p-confirm" type="checkbox"> 确认执行虚拟下单（T+1 / 整手规则与回测一致）</label>
+        <label class="confirm" data-gate="p-submit"><input id="p-confirm" type="checkbox"> 确认执行虚拟下单（T+1 / 整手规则与回测一致）</label>
         <div class="toolbar"><button id="p-submit" class="btn primary">下单</button>
           <button id="p-reset" class="btn ghost danger">重置账户</button><span id="p-hint" class="dim"></span></div>
       </div>
@@ -373,6 +377,7 @@
   </footer>
 
   <div id="toast-box" class="toast-box" aria-live="polite"></div>
+  <button id="to-top" class="to-top hidden" title="返回顶部 (Home)" aria-label="返回顶部">↑</button>
 
   <div id="cmd-panel" class="cmd-panel hidden">
     <div class="cmd-box">

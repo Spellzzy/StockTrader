@@ -1,10 +1,10 @@
 /**
- * Web 前端冒烟测试：在 Node 里用最小 DOM mock 依序执行
- * app.js / ux.js / p1.js / p2.js / detail.js / scan.js，任一脚本顶层抛错即失败。
+ * Web 前端冒烟 + 行为测试：在 Node 里用增强 DOM mock 依序执行
+ * app.js / ux.js / p1.js / p2.js / detail.js / scan.js，任一脚本顶层抛错即失败，
+ * 并验证缓存策略、确认门禁、密度偏好、回车提交等关键交互。
  *
  * 背景：这些文件是经典 script，共享全局词法环境；曾因顶层 const 重名
  * 和 $() 选择器用法不一致导致整个脚本静默失效，纯接口测试发现不了。
- * 这里把四个脚本拼进同一次 eval，以复现「顶层 let/const 跨文件共享」。
  *
  * 运行：node scripts/js_smoke.mjs
  */
@@ -17,52 +17,97 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 function makeParent() {
   return {
     insertBefore() {}, appendChild() {},
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    classList: { add() {}, remove() {} },
+    querySelector: () => null, querySelectorAll: () => [],
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
   };
 }
 
 function makeElement(id) {
-  return {
+  const handlers = {};
+  const classes = new Set();
+  const el = {
     id, tagName: "DIV", innerHTML: "", textContent: "", className: "",
     value: "", checked: false, type: "", title: "", placeholder: "",
     disabled: false, href: "", download: "", hidden: false,
+    scrollLeft: 0, clientWidth: 1000, offsetLeft: 0, offsetWidth: 80,
     dataset: {}, style: {}, children: [], parentNode: makeParent(),
-    nextElementSibling: null,
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    addEventListener() {}, removeEventListener() {},
-    appendChild(child) { this.children.push(child); child.parentNode = this; return child; },
-    insertBefore(child) { this.children.push(child); child.parentNode = this; return child; },
+    nextElementSibling: null, _handlers: handlers, _classes: classes,
+    classList: {
+      add(c) { classes.add(c); },
+      remove(c) { classes.delete(c); },
+      toggle(c, force) {
+        const on = force === undefined ? !classes.has(c) : !!force;
+        if (on) classes.add(c); else classes.delete(c);
+        return on;
+      },
+      contains(c) { return classes.has(c); },
+    },
+    addEventListener(type, fn) { (handlers[type] ||= []).push(fn); },
+    removeEventListener() {},
+    dispatchEvent(evt) {
+      if (!evt) return true;
+      (handlers[evt.type] || []).forEach(fn => fn(evt));
+      return true;
+    },
+    appendChild(child) {
+      this.children.push(child); child.parentNode = this; return child;
+    },
+    insertBefore(child) {
+      this.children.push(child); child.parentNode = this; return child;
+    },
     replaceChildren(...nodes) { this.children = nodes; },
-    querySelector: (sel) => makeElement(id + "::" + sel),
-    querySelectorAll: () => [],
+    querySelector(sel) {
+      if (sel === ".toast.free") {
+        return this.children.find(c => c.classList.contains("free")) || null;
+      }
+      return makeElement(id + "::" + sel);
+    },
+    querySelectorAll(sel) {
+      if (sel === ".picker-item") {
+        return this.children.filter(c => c.classList.contains("picker-item"));
+      }
+      return [];
+    },
     remove() {}, focus() {}, click() {}, scrollIntoView() {},
-    dispatchEvent() {}, closest: () => null,
+    closest: () => null,
   };
+  return el;
 }
 
 const elements = new Map();
+const docHandlers = {};
+const gateLabels = [];
 globalThis.document = {
   hidden: false,
+  readyState: undefined,
+  body: makeElement("body"),
   getElementById(id) {
     if (!elements.has(id)) elements.set(id, makeElement(id));
     return elements.get(id);
   },
   createElement: (tag) => makeElement("created::" + tag),
   querySelector: () => null,
-  querySelectorAll: () => [],
-  addEventListener() {},
+  querySelectorAll(sel) {
+    if (sel === ".confirm[data-gate]") return gateLabels;
+    return [];
+  },
+  addEventListener(type, fn) { (docHandlers[type] ||= []).push(fn); },
+  dispatchEvent(evt) {
+    (docHandlers[evt.type] || []).forEach(fn => fn(evt));
+    return true;
+  },
 };
 globalThis.window = globalThis;
+const winHandlers = {};
+globalThis.addEventListener = (type, fn) => { (winHandlers[type] ||= []).push(fn); };
 globalThis.location = { hash: "", pathname: "/" };
 globalThis.history = { replaceState() {} };
-globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
-if (!globalThis.Event) {
-  globalThis.Event = class {
-    constructor(type, opts) { this.type = type; Object.assign(this, opts || {}); }
-  };
-}
+const store = new Map();
+globalThis.localStorage = {
+  getItem: (k) => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+};
 globalThis.setInterval = () => 0;      // 不真的起定时器，避免测试进程不退出
 globalThis.clearInterval = () => {};
 globalThis.fetch = async () => ({
@@ -70,6 +115,11 @@ globalThis.fetch = async () => ({
   json: async () => ({ ok: true, data: { version: "0.0.0-smoke" } }),
 });
 if (!globalThis.crypto) globalThis.crypto = (await import("node:crypto")).webcrypto;
+if (!globalThis.Event) {
+  globalThis.Event = class {
+    constructor(type, opts) { this.type = type; Object.assign(this, opts || {}); }
+  };
+}
 
 let asyncFailures = 0;
 process.on("unhandledRejection", () => { asyncFailures += 1; });
@@ -88,9 +138,10 @@ try {
 }
 console.log(`  ${names.join(" / ")} 同全局环境顶层执行 OK`);
 
-/* 缓存策略行为断言：轮询 / 状态 / 配置类接口绝不能进慢任务缓存，
-   否则训练轮询每 1.5s 都会命中缓存并弹提示，状态也永远停在 running。 */
-const policy = globalThis.ST && globalThis.ST.cachePolicy;
+const ST = globalThis.ST;
+
+/* 缓存策略：轮询 / 状态 / 配置类接口绝不能进慢任务缓存 */
+const policy = ST && ST.cachePolicy;
 if (!policy) throw new Error("ux.js 未暴露 cachePolicy 探针");
 const mustNotCache = [
   "/api/predict/train/status?task_id=abc",
@@ -111,14 +162,58 @@ for (const p of mustNotCache) {
 for (const p of mustCache) {
   if (!policy.isCacheable(p)) throw new Error(`慢任务未被缓存: ${p}`);
 }
-if (typeof globalThis.ST.invalidate !== "function") {
+if (typeof ST.invalidate !== "function") {
   throw new Error("ux.js 缺少 ST.invalidate（训练完成后需失效预测缓存）");
 }
 console.log("  缓存白名单 / 失效接口行为断言 OK");
+
+/* 确认门禁：未勾选时禁用提交，勾选后放行 */
+const gateBox = document.getElementById("w-confirm");
+const gateBtn = document.getElementById("w-submit");
+const gateLabel = makeElement("gate-label");
+gateLabel.dataset.gate = "w-submit";
+gateLabel.querySelector = () => gateBox;
+gateLabels.push(gateLabel);
+gateBox.checked = false;
+ST.syncConfirmGates();
+if (!gateBtn.disabled) throw new Error("未勾选确认时提交按钮应禁用");
+gateBox.checked = true;
+ST.syncConfirmGates();
+if (gateBtn.disabled) throw new Error("勾选确认后提交按钮应可用");
+console.log("  确认勾选门禁行为断言 OK");
+
+/* 紧凑密度：切换后 body class 与 localStorage 都要更新 */
+const density = document.getElementById("density-compact");
+density.checked = true;
+density.dispatchEvent({ type: "change" });
+if (!document.body.classList.contains("density-compact")) {
+  throw new Error("紧凑密度未应用到 body");
+}
+if (localStorage.getItem("st.density") !== "compact") {
+  throw new Error("紧凑密度偏好未持久化");
+}
+console.log("  紧凑密度偏好行为断言 OK");
+
+/* 表单回车：Enter 触发 data-enter 指向的按钮 */
+const host = makeElement("form-host");
+host.dataset.enter = "w-submit";
+const field = makeElement("field");
+field.tagName = "INPUT";
+field.closest = (sel) => (sel === "[data-enter]" ? host : null);
+let clicked = 0;
+gateBtn.click = () => { clicked += 1; };
+gateBtn.disabled = false;
+document.dispatchEvent({
+  type: "keydown", key: "Enter", target: field,
+  ctrlKey: false, metaKey: false, shiftKey: false, altKey: false,
+  preventDefault() {},
+});
+if (clicked !== 1) throw new Error("表单 Enter 未触发默认提交按钮");
+console.log("  表单回车提交行为断言 OK");
 
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);
   process.exit(1);
 }
-console.log("JS 冒烟测试通过：六个脚本顶层均无异常");
+console.log("JS 冒烟测试通过：六个脚本顶层与关键交互行为均正常");

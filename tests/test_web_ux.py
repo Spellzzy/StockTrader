@@ -130,6 +130,28 @@ def test_index_injects_static_version():
     assert len({m[1] for m in matches}) == 1  # 一次响应内版本一致
 
 
+def test_layout_and_interaction_wiring():
+    """布局偏好与操作手感的控件、逻辑、样式三者都要接线"""
+    html = client.get("/").text
+    for marker in ("density-compact", "to-top", "data-enter=", "data-gate=",
+                   "tab-group-start", "w-amount", "pos-amount"):
+        assert marker in html, f"index.html 缺少 {marker}"
+
+    ux = client.get("/static/ux.js").text
+    for marker in ("syncConfirmGates", "applyDensity", "scrollActiveTabIntoView",
+                   "data-enter", "kbd-active", "syncToTop"):
+        assert marker in ux, f"ux.js 缺少 {marker}"
+
+    p2 = client.get("/static/p2.js").text
+    assert "bindAmountPreview" in p2
+    assert "syncConfirmGates" in p2
+
+    css = client.get("/static/style.css").text
+    for marker in ("density-compact", "position: sticky", "prefers-reduced-motion",
+                   ":focus-visible", ".to-top", ".picker-item.kbd-active"):
+        assert marker in css, f"style.css 缺少 {marker}"
+
+
 def test_no_short_lived_dom_removal():
     """短生命周期节点被 remove 会让预览 WebView 注入脚本拿到 null 元素"""
     js = client.get("/static/ux.js").text
