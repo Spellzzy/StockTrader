@@ -130,6 +130,17 @@ def test_index_injects_static_version():
     assert len({m[1] for m in matches}) == 1  # 一次响应内版本一致
 
 
+def test_no_short_lived_dom_removal():
+    """短生命周期节点被 remove 会让预览 WebView 注入脚本拿到 null 元素"""
+    js = client.get("/static/ux.js").text
+    assert "item.remove()" not in js
+    assert "tr.remove()" not in js
+    assert ".toast.free" in js            # toast 复用固定节点池
+    assert "classList.add('hidden')" in js  # 骨架行只隐藏
+    assert "items.dataset.built === '1'" in js  # picker 选项只构建一次
+    assert "search.addEventListener('input', applyFilter)" in js
+
+
 def test_cache_policy_and_training_invalidation():
     """训练轮询不能被当慢任务缓存；训练完成后必须失效预测缓存"""
     ux = client.get("/static/ux.js").text

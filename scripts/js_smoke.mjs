@@ -29,6 +29,7 @@ function makeElement(id) {
     value: "", checked: false, type: "", title: "", placeholder: "",
     disabled: false, href: "", download: "", hidden: false,
     dataset: {}, style: {}, children: [], parentNode: makeParent(),
+    nextElementSibling: null,
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     addEventListener() {}, removeEventListener() {},
     appendChild(child) { this.children.push(child); child.parentNode = this; return child; },

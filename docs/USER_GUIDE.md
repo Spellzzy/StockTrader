@@ -1589,6 +1589,28 @@ NotificationManager.notify_alert()
 
 ## 常见问题
 
+### Q: 内置预览里报 `getBoundingClientRect` 空指针？
+
+```
+Script error.
+Uncaught TypeError: Cannot read properties of null (reading 'getBoundingClientRect')
+```
+
+项目代码里**没有任何一处**调用 `getBoundingClientRect`，用外部浏览器打开
+`http://127.0.0.1:8765/` 时页面错误与控制台错误均为空；这是 CodeBuddy 预览
+WebView 自己注入的页面检查脚本，在动态节点消失后拿到 `null` 元素所致。
+
+页面侧已做兼容，尽量消除诱因：
+
+- toast 改为**固定节点池复用**，只隐藏不 `remove()`
+- 骨架行只 `hidden`，不再从 DOM 移除；表格分页会忽略隐藏的骨架行
+- 代码选择器选项**只构建一次**，搜索时只切换 `hidden`（以前每次按键都 `innerHTML` 重建）
+- 输入框外层的 wrapper 在 `DOMContentLoaded` 之后才挂载
+- HTML / JS / CSS 返回 `no-store` 且带内容版本号，刷新必拿最新脚本
+
+刷新预览后一般会消失；若容器仍报，用外部浏览器打开同一地址即可完全避免，
+页面功能不受影响。
+
 ### Q: 如何批量导入历史交易？
 
 准备一个 CSV 文件，包含以下列：

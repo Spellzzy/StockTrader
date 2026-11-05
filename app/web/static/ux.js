@@ -44,11 +44,22 @@
   function toast(msg, type = 'info', ms = 3200) {
     const box = $('toast-box');
     if (!box) return;
-    const item = document.createElement('div');
+    /* 复用固定节点池，只隐藏不 remove：
+       预览 WebView 的注入脚本会对「刚被移出 DOM 的元素」再做测量，
+       短生命周期的 toast 最容易触发 getBoundingClientRect 空指针。 */
+    let item = box.querySelector('.toast.free');
+    if (!item) {
+      item = document.createElement('div');
+      box.appendChild(item);
+    }
     item.className = 'toast ' + type;
     item.textContent = msg;
-    box.appendChild(item);
-    setTimeout(() => item.remove(), ms);
+    item.style.display = '';
+    clearTimeout(item._hideTimer);
+    item._hideTimer = setTimeout(() => {
+      item.className = 'toast free hidden';
+      item.textContent = '';
+    }, ms);
   }
   ST.toast = toast;
 
@@ -191,7 +202,7 @@
     if (!panel) return;
     panel.querySelectorAll('table').forEach(t => {
       const tbody = t.querySelector('tbody');
-      if (!tbody || tbody.querySelector('tr')) return;
+      if (!tbody || tbody.querySelector('tr:not(.skeleton-row.hidden)')) return;
       const cols = t.querySelectorAll('thead th').length || 4;
       let html = '';
       for (let i = 0; i < 3; i++) {
@@ -201,7 +212,8 @@
     });
   }
   function hideSkeleton() {
-    document.querySelectorAll('.skeleton-row').forEach(tr => tr.remove());
+    // 只隐藏不移除，避免宿主脚本持有的节点引用失效
+    document.querySelectorAll('.skeleton-row').forEach(tr => tr.classList.add('hidden'));
   }
   function stampUpdate() {
     const el = $('last-update');
@@ -328,6 +340,7 @@
   function enhanceTable(table) {
     if (!table) return;
     table._allRows = Array.from(table.querySelector('tbody').children)
+      .filter(tr => !tr.classList.contains('skeleton-row'))
       .map(tr => tr.cloneNode(true));
     if (table.dataset.enhanced) { applyTable(table); return; }
     table.dataset.enhanced = '1';
@@ -442,19 +455,24 @@
     const search = pop.querySelector('.picker-search');
     const items = pop.querySelector('.picker-items');
 
-    async function render() {
+    /* 选项只构建一次，搜索时仅切换 hidden：
+       每次按键都 innerHTML 重建会不断增删 DOM 节点，预览 WebView 注入脚本
+       容易在节点消失后拿到 null 并调 getBoundingClientRect。 */
+    async function buildItems() {
+      if (items.dataset.built === '1') return;
       const d = await ensurePickerData();
-      const kw = search.value.trim().toLowerCase();
       let html = '';
       for (const [label, rows] of [['我的自选', d.watchlist || []], ['当前持仓', d.holdings || []]]) {
-        const matched = rows.filter(x => !kw
-          || (x.code + ' ' + (x.name || '')).toLowerCase().includes(kw));
-        if (!matched.length) continue;
-        html += '<div class="picker-group">' + esc(label) + ' (' + matched.length + ')</div>';
-        html += matched.map(x => '<button type="button" class="picker-item" data-code="'
-          + esc(x.code) + '"><code>' + esc(x.code) + '</code> ' + esc(x.name || '') + '</button>').join('');
+        html += '<div class="picker-group">' + esc(label)
+          + ' (<span class="picker-count">0</span>)</div>';
+        html += rows.map(x => '<button type="button" class="picker-item" data-code="'
+          + esc(x.code) + '" data-name="' + esc(x.name || '')
+          + '"><code>' + esc(x.code) + '</code> ' + esc(x.name || '') + '</button>').join('');
       }
-      items.innerHTML = html || '<div class="dim picker-empty">没有匹配的股票</div>';
+      html += '<div class="dim picker-empty hidden">没有匹配的股票</div>';
+      items.innerHTML = html;
+      items.dataset.built = '1';
+
       items.querySelectorAll('.picker-item').forEach(b => b.addEventListener('click', () => {
         const code = b.dataset.code;
         if (input.id === 'codes') {
@@ -472,13 +490,42 @@
       }));
     }
 
+    function applyFilter() {
+      const kw = search.value.trim().toLowerCase();
+      let visible = 0;
+      items.querySelectorAll('.picker-item').forEach(b => {
+        const hay = (b.dataset.code + ' ' + (b.dataset.name || '')).toLowerCase();
+        const show = !kw || hay.includes(kw);
+        b.classList.toggle('hidden', !show);
+        if (show) visible += 1;
+      });
+      items.querySelectorAll('.picker-group').forEach(g => {
+        let n = 0;
+        let node = g.nextElementSibling;
+        while (node && node.classList && node.classList.contains('picker-item')) {
+          if (!node.classList.contains('hidden')) n += 1;
+          node = node.nextElementSibling;
+        }
+        g.classList.toggle('hidden', n === 0);
+        const count = g.querySelector('.picker-count');
+        if (count) count.textContent = String(n);
+      });
+      const empty = items.querySelector('.picker-empty');
+      if (empty) empty.classList.toggle('hidden', visible > 0);
+    }
+
+    async function render() {
+      await buildItems();
+      applyFilter();
+    }
+
     btn.addEventListener('click', async e => {
       e.stopPropagation();
       const willOpen = pop.classList.contains('hidden');
       document.querySelectorAll('.picker-pop').forEach(p => p.classList.add('hidden'));
       if (willOpen) { pop.classList.remove('hidden'); await render(); search.focus(); }
     });
-    search.addEventListener('input', render);
+    search.addEventListener('input', applyFilter);
     pop.addEventListener('click', e => e.stopPropagation());
   }
   /* 延后到 DOM 就绪再改结构：文档解析期间搬动 input 会让宿主 WebView
