@@ -1214,6 +1214,68 @@ async def scan_latest() -> dict:
     )})
 
 
+# ==================== AI 预测：模型准备 ====================
+
+class TrainStartWrite(WriteBase):
+    code: str = ""
+    use_dl: bool = False
+
+
+@app.post("/api/predict/train")
+async def predict_train(req: TrainStartWrite) -> dict:
+    """后台训练缺失的预测模型（confirm + 幂等），立即返回 task_id
+
+    Web 预测仍固定 auto_train=False；只有用户显式点「准备模型」才会训练。
+    """
+    from app.web.train_tasks import TRAIN_TASKS
+
+    def execute():
+        return TRAIN_TASKS.start(code=req.code, use_dl=req.use_dl)
+
+    return await _write(req, "predict-train", execute)
+
+
+@app.get("/api/predict/train/status")
+async def predict_train_status(task_id: str = "") -> dict:
+    from app.web.train_tasks import TRAIN_TASKS
+
+    task = TRAIN_TASKS.get(task_id) if task_id else TRAIN_TASKS.current()
+    return ok({"task": task})
+
+
+@app.get("/api/predict/model-status")
+async def predict_model_status(code: str = Query(..., min_length=1)) -> dict:
+    """预检查该股票是否已有可用模型（Web 页面据此显示「准备模型」按钮）"""
+    from app.config import get_config
+    from app.models.stock import is_index_code, normalize_stock_code
+    from app.web.train_tasks import TRAIN_TASKS
+
+    try:
+        norm_code = normalize_stock_code(code.strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的股票代码")
+
+    model_dir = Path(
+        (get_config().get("ai", {}) or {}).get("model", {}).get(
+            "save_dir", "./data/models"
+        )
+    ) / "ml"
+    files = sorted(model_dir.glob(f"{norm_code}_*.joblib")) if model_dir.exists() else []
+
+    current = TRAIN_TASKS.current()
+    training = bool(
+        current and current["code"] == norm_code and current["status"] == "running"
+    )
+    return ok({
+        "code": norm_code,
+        "ready": bool(files),
+        "models": [f.name for f in files[-6:]],
+        "can_train": not is_index_code(norm_code),
+        "training": training,
+        "task_id": current["id"] if training else None,
+    })
+
+
 # 静态资源挂在最后，避免覆盖 API 路由
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

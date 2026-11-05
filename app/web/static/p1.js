@@ -197,19 +197,138 @@ async function loadCodePicker() {
   }
 }
 
+let modelStatus = null;
+let trainTaskId = null;
+let trainPollTimer = null;
+
+function predictCode() { return $('#predict-code').value.trim(); }
+
+function trainClientId() {
+  return (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'train-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+}
+
+async function checkModelStatus() {
+  const code = predictCode();
+  if (!code) return;
+  try {
+    const s = await api('/api/predict/model-status?code=' + encodeURIComponent(code));
+    modelStatus = s;
+    $('#predict-hint').textContent = s.ready
+      ? '模型就绪 · 可点「开始预测」'
+      : (s.can_train ? '尚无预测模型 · 可点「准备模型」' : '指数不参与模型训练');
+    if (!s.ready) renderModelMissing(s.code, s);
+  } catch (e) {
+    // 预检查失败不阻断预测
+  }
+}
+
+function renderModelMissing(code, status) {
+  const canTrain = !status || status.can_train !== false;
+  const training = status && status.training;
+  $('#predict-result').innerHTML = `
+    <div class="result-box model-missing">
+      <h3>⚠️ ${esc(code)} 还没有预测模型</h3>
+      <div class="dim">预测前需要先训练该股票的 XGBoost / RandomForest 模型。
+        训练在后台执行，首次要拉取历史行情，可能需要几分钟；完成后会自动重新预测。</div>
+      ${canTrain ? `<div class="toolbar">
+        <button id="predict-train-btn" class="btn primary">准备模型</button>
+        <span id="predict-train-hint" class="dim"></span>
+      </div>` : '<div class="quality-warn">指数不参与模型训练，请改用个股代码。</div>'}
+      <div id="predict-train-progress" class="detail-loading hidden">
+        <span class="spinner"></span><span id="predict-train-msg"></span>
+      </div>
+      <div class="dim">也可以命令行执行：<code>stock-ai train-ai ${esc(code)}</code></div>
+    </div>`;
+  const btn = $('#predict-train-btn');
+  if (btn) btn.addEventListener('click', () => startTraining(code));
+  if (training && status.task_id) beginTraining(status.task_id);
+}
+
+function stopTraining() {
+  if (trainPollTimer) clearInterval(trainPollTimer);
+  trainPollTimer = null;
+  trainTaskId = null;
+}
+
+function beginTraining(taskId) {
+  trainTaskId = taskId;
+  const box = $('#predict-train-progress');
+  if (box) box.classList.remove('hidden');
+  const btn = $('#predict-train-btn');
+  if (btn) btn.disabled = true;
+  const msg = $('#predict-train-msg');
+  if (msg) msg.textContent = '训练任务已启动…';
+  stopTrainingPoll();
+  trainPollTimer = setInterval(pollTraining, 1500);
+  pollTraining();
+}
+
+function stopTrainingPoll() {
+  if (trainPollTimer) clearInterval(trainPollTimer);
+  trainPollTimer = null;
+}
+
+async function pollTraining() {
+  if (!trainTaskId) return;
+  try {
+    const d = await api('/api/predict/train/status?task_id=' + encodeURIComponent(trainTaskId));
+    const t = d.task;
+    if (!t) return;
+    const msg = $('#predict-train-msg');
+    if (msg) msg.textContent = t.message || '训练中…';
+    if (t.status === 'done') {
+      stopTraining();
+      window.ST.toast('模型训练完成，正在重新预测', 'ok');
+      await runPredict();
+    } else if (t.status === 'failed') {
+      stopTraining();
+      showError('模型训练失败：' + (t.error || t.message || '未知错误'));
+      const btn = $('#predict-train-btn');
+      if (btn) { btn.disabled = false; btn.textContent = '重试准备模型'; }
+    }
+  } catch (e) {
+    // 单次轮询失败等下一次
+  }
+}
+
+async function startTraining(code) {
+  if (!window.confirm(
+    `确定训练 ${code} 的预测模型吗？\n训练会读取历史行情并写入模型文件，首次可能需要几分钟。`
+  )) return;
+  const btn = $('#predict-train-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  try {
+    const d = await post('/api/predict/train', {
+      confirm: true, client_id: trainClientId(), code, use_dl: false,
+    });
+    const payload = d.result || {};
+    if (!payload.task_id) throw new Error('未返回任务 ID');
+    if (payload.already_running) {
+      window.ST.toast(`已有训练任务在运行（${payload.running_code || ''}）`, 'info');
+    }
+    beginTraining(payload.task_id);
+  } catch (e) {
+    showError(String(e.message || e));
+    if (btn) { btn.disabled = false; btn.textContent = '准备模型'; }
+  }
+}
+
 async function loadPredict() {
   const el = $('#predict-result');
-  if (!el.innerHTML) el.innerHTML = '<div class="result-box dim">输入股票代码后点击「开始预测」。预测不会自动训练模型。</div>';
+  if (!el.innerHTML) el.innerHTML = '<div class="result-box dim">输入股票代码后点击「开始预测」。预测不会自动训练模型；缺模型时可点「准备模型」。</div>';
   await loadCodePicker();
+  await checkModelStatus();
 }
 
 async function runPredict() {
   const btn = $('#predict-btn');
   await busy(btn, '预测中…', async () => {
     clearError();
-    const code = $('#predict-code').value.trim();
+    const code = predictCode();
     const d = await api('/api/predict?code=' + encodeURIComponent(code));
-    if (d.error) { $('#predict-result').innerHTML = `<div class="quality-warn">${esc(d.error)}</div>`; return; }
+    if (d.error) { renderModelMissing(code, modelStatus); return; }
     const c = d.combined || {};
     const q = c.quality || {};
     const stars = '⭐'.repeat(c.stars || 0) + '☆'.repeat(5 - (c.stars || 0));
@@ -277,7 +396,9 @@ $('#lab-signals-btn').addEventListener('click', loadSignals);
 $('#lab-optimize-btn').addEventListener('click', runOptimize);
 $('#predict-btn').addEventListener('click', runPredict);
 $('#predict-code').addEventListener('keydown', e => { if (e.key === 'Enter') runPredict(); });
+$('#predict-code').addEventListener('change', checkModelStatus);
 $('#predict-picker').addEventListener('change', e => {
   if (e.target.value) $('#predict-code').value = e.target.value;
+  checkModelStatus();
 });
 })();
