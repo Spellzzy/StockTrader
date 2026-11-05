@@ -82,6 +82,34 @@ try {
 }
 console.log(`  ${names.join(" / ")} 同全局环境顶层执行 OK`);
 
+/* 缓存策略行为断言：轮询 / 状态 / 配置类接口绝不能进慢任务缓存，
+   否则训练轮询每 1.5s 都会命中缓存并弹提示，状态也永远停在 running。 */
+const policy = globalThis.ST && globalThis.ST.cachePolicy;
+if (!policy) throw new Error("ux.js 未暴露 cachePolicy 探针");
+const mustNotCache = [
+  "/api/predict/train/status?task_id=abc",
+  "/api/predict/model-status?code=sh600892",
+  "/api/predict/train",
+  "/api/scan/status?task_id=abc",
+  "/api/scan/config",
+  "/api/stock/detail?code=sh600519",
+];
+const mustCache = [
+  "/api/backtest/run", "/api/backtest/compare",
+  "/api/lab/signals?code=sh600519", "/api/lab/optimize",
+  "/api/predict?code=sh600519",
+];
+for (const p of mustNotCache) {
+  if (policy.isCacheable(p)) throw new Error(`不该缓存却被缓存: ${p}`);
+}
+for (const p of mustCache) {
+  if (!policy.isCacheable(p)) throw new Error(`慢任务未被缓存: ${p}`);
+}
+if (typeof globalThis.ST.invalidate !== "function") {
+  throw new Error("ux.js 缺少 ST.invalidate（训练完成后需失效预测缓存）");
+}
+console.log("  缓存白名单 / 失效接口行为断言 OK");
+
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);

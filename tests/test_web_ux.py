@@ -130,6 +130,18 @@ def test_index_injects_static_version():
     assert len({m[1] for m in matches}) == 1  # 一次响应内版本一致
 
 
+def test_cache_policy_and_training_invalidation():
+    """训练轮询不能被当慢任务缓存；训练完成后必须失效预测缓存"""
+    ux = client.get("/static/ux.js").text
+    for marker in ("cacheHinted", "hasBusinessError", "ST.cachePolicy",
+                   "ST.invalidate", "CACHE_PATHS"):
+        assert marker in ux, f"ux.js 缺少 {marker}"
+
+    p1 = client.get("/static/p1.js").text
+    assert "ST.invalidate('/api/predict?')" in p1
+    assert "await checkModelStatus();" in p1
+
+
 def test_static_version_changes_with_file(monkeypatch, tmp_path):
     path = tmp_path / "app.js"
     path.write_text("old", encoding="utf-8")

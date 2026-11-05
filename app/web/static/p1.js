@@ -280,7 +280,10 @@ async function pollTraining() {
     if (msg) msg.textContent = t.message || '训练中…';
     if (t.status === 'done') {
       stopTraining();
+      // 训练前的「未找到模型」结果可能还在慢任务缓存里，先失效再重预测
+      if (window.ST.invalidate) window.ST.invalidate('/api/predict?');
       window.ST.toast('模型训练完成，正在重新预测', 'ok');
+      await checkModelStatus();
       await runPredict();
     } else if (t.status === 'failed') {
       stopTraining();

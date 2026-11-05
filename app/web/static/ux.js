@@ -11,7 +11,11 @@
   const LS = window.localStorage;
   const PAGE_SIZE = 20;
   const CACHE_TTL = 10 * 60 * 1000;
-  const CACHE_PATHS = /^\/api\/(backtest\/|lab\/|predict)/;
+  /* 只缓存真正耗时且结果可复用的端点。必须是精确白名单：
+     早期写成 /^\/api\/(backtest\/|lab\/|predict)/ 会把
+     /api/predict/train/status（训练轮询）和 /api/predict/model-status
+     也当成慢任务，导致轮询每 1.5s 都命中缓存、提示刷屏且状态永不更新。 */
+  const CACHE_PATHS = /^\/api\/(?:backtest\/(?:run|compare)|lab\/(?:signals|optimize)|predict)(?:\?|$)/;
   const PICKER_IDS = [
     'wl-code', 'codes', 'kline-code', 'bt-code', 'lab-code',
     'pos-code', 'w-code', 'a-code', 'p-code',
@@ -60,6 +64,7 @@
   }
 
   const inflight = new Map();
+  const cacheHinted = new Set();   // 同一 key 的缓存提示只弹一次，避免轮询刷屏
 
   async function performRequest(path, options, method, body, key) {
     const cacheable = CACHE_PATHS.test(path);
@@ -67,10 +72,14 @@
     if (cacheable && cache.has(key)) {
       const hit = cache.get(key);
       if (Date.now() - hit.ts < CACHE_TTL) {
-        toast('使用缓存结果（相同参数 10 分钟内不重跑）', 'info', 2400);
+        if (!cacheHinted.has(key)) {
+          cacheHinted.add(key);
+          toast('使用缓存结果（相同参数 10 分钟内不重跑）', 'info', 2400);
+        }
         return hit.data;
       }
       cache.delete(key);
+      cacheHinted.delete(key);
     }
 
     const ctrl = new AbortController();
@@ -89,8 +98,14 @@
       try { payload = await res.json(); }
       catch (e) { throw new Error('服务返回格式异常'); }
       if (!res.ok || !payload.ok) throw new Error(payload.error || ('HTTP ' + res.status));
-      if (cacheable) cache.set(key, { data: payload.data, ts: Date.now() });
-      return payload.data;
+      /* 业务错误（如 /api/predict 返回「未找到模型」）不能缓存：
+         否则模型训练完成后重新预测仍会拿到这条失败结果。 */
+      const data = payload.data;
+      const hasBusinessError = data && typeof data === 'object' && !!data.error;
+      if (cacheable && !hasBusinessError) {
+        cache.set(key, { data, ts: Date.now() });
+      }
+      return data;
     } catch (e) {
       if (e.name === 'AbortError') {
         throw new Error(timedOut ? '请求超时，请缩小参数后重试' : '已取消本次请求');
@@ -125,7 +140,18 @@
     method: 'POST', body: JSON.stringify(body || {}),
   });
   ST.cancelActive = () => { if (activeReq) activeReq.ctrl.abort(); };
-  ST.clearCache = () => cache.clear();
+  ST.clearCache = () => { cache.clear(); cacheHinted.clear(); };
+  /* 按路径片段精确失效：训练完成后用它清掉该股票的预测缓存 */
+  ST.invalidate = (fragment) => {
+    for (const k of Array.from(cache.keys())) {
+      if (k.indexOf(fragment) !== -1) {
+        cache.delete(k);
+        cacheHinted.delete(k);
+      }
+    }
+  };
+  /* 只读策略探针，供冒烟测试锁住白名单，防止再次误伤轮询接口 */
+  ST.cachePolicy = Object.freeze({ isCacheable: (path) => CACHE_PATHS.test(path) });
   /* 手动刷新：清掉服务端行情缓存与前端慢任务缓存，确保真的拉到新数据。
      自动刷新走 window.refresh()，让 20 秒 TTL 自然过期，避免反复起子进程。 */
   ST.forceRefresh = async () => {
