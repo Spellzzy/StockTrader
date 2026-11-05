@@ -157,6 +157,50 @@ def test_latest_and_list_runs(svc):
     assert len(svc.list_runs(limit=5)) == 1
 
 
+def test_scan_uses_independent_relaxed_rules_by_default(svc):
+    """全市场摘选不应沿用自选股 sn 的 mode=all 严格规则"""
+    cfg = FakeScreener.instances[0].cfg
+    assert cfg["buy"]["mode"] == "atleast:2"
+    names = [r["name"] for r in cfg["buy"]["rules"]]
+    assert "ma_bull" in names and "macd_golden" in names
+    assert "sector_strong" not in names       # 需要基准数据的硬条件不进默认
+    assert scan_mod.DEFAULT_SCAN_RULES[4]["params"]["ratio"] == 1.2
+
+
+def test_custom_rules_override_defaults(monkeypatch, isolate_config):
+    monkeypatch.setattr(scan_mod, "StockDataClient", FakeClient)
+    monkeypatch.setattr(scan_mod, "ScreenerService", FakeScreener)
+    custom = [{"name": "rsi_below", "params": {"threshold": 40}}]
+    scan_mod.MarketScanService(
+        config={"mode": "any", "rules": custom}, scope=_scope
+    )
+    cfg = FakeScreener.instances[-1].cfg
+    assert cfg["buy"]["mode"] == "any" and cfg["buy"]["rules"] == custom
+
+
+def test_inherit_screener_keeps_original_rules(monkeypatch, isolate_config):
+    isolate_config["screener"] = {
+        "buy": {
+            "mode": "all",
+            "rules": [{"name": "sector_strong", "params": {}}],
+        }
+    }
+    monkeypatch.setattr(scan_mod, "StockDataClient", FakeClient)
+    monkeypatch.setattr(scan_mod, "ScreenerService", FakeScreener)
+    scan_mod.MarketScanService(
+        config={"inherit_screener": True}, scope=_scope
+    )
+    cfg = FakeScreener.instances[-1].cfg
+    assert cfg["buy"]["mode"] == "all"
+    assert any(r["name"] == "sector_strong" for r in cfg["buy"]["rules"])
+
+
+def test_params_hash_changes_with_rules(svc):
+    a = svc.params_hash()
+    svc.cfg["mode"] = "any"
+    assert svc.params_hash() != a
+
+
 def test_params_hash_changes_with_config_and_actual_pool(svc):
     a = svc.params_hash()
     svc.cfg["min_amount_wan"] = 9999

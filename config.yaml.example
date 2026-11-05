@@ -223,3 +223,22 @@ market_scan:
   kline_count: 90
   all_a_cache_days: 7
   pool_size_limit: 0
+
+  # 摘选规则独立于上面的 screener（不影响 stock-ai sn）。
+  # 全市场候选多，用「至少命中 2 条」宽进严出；原 screener.buy 的 mode=all
+  # 加 sector_strong/量比1.5 在大盘里几乎必然 0 命中。
+  # 不填 mode/rules 时使用内置默认（就是下面这组）；
+  # 想完全沿用 screener.buy 的规则，改成 inherit_screener: true。
+  inherit_screener: false
+  mode: "atleast:2"
+  rules:
+    - name: ma_uptrend            # MA20 向上
+      params: { ma: 20, lookback: 5 }
+    - name: price_above_ma        # 股价站上 MA20
+      params: { ma: 20 }
+    - name: ma_bull               # MA5 > MA10 > MA20 多头排列
+      params: {}
+    - name: macd_golden           # 最近 3 根内 MACD 金叉
+      params: { lookback: 3 }
+    - name: volume_expand         # 量比放宽到 1.2（原 1.5）
+      params: { ma_window: 5, ratio: 1.2 }

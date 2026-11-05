@@ -40,7 +40,20 @@ _HASH_KEYS = (
     "pool", "batch_size", "candidate_limit", "min_amount_wan",
     "min_price", "max_price", "max_change_pct", "exclude_st",
     "exclude_delisted", "top_n", "side", "max_workers", "kline_count",
+    "mode", "rules", "inherit_screener",
 )
+
+# 全市场摘选的默认规则：与「自选股选股」场景不同，大池需要宽进严出。
+# 原 screener.buy 是 mode=all 且含 sector_strong（需基准）+ 量比 1.5，
+# 四条全满足在大盘里几乎必然 0 命中。
+DEFAULT_SCAN_MODE = "atleast:2"
+DEFAULT_SCAN_RULES = [
+    {"name": "ma_uptrend", "params": {"ma": 20, "lookback": 5}},
+    {"name": "price_above_ma", "params": {"ma": 20}},
+    {"name": "ma_bull", "params": {}},
+    {"name": "macd_golden", "params": {"lookback": 3}},
+    {"name": "volume_expand", "params": {"ma_window": 5, "ratio": 1.2}},
+]
 
 
 def build_report(result: dict) -> str:
@@ -90,6 +103,16 @@ class MarketScanService:
         for key in _SCREENER_KEYS:
             if key in self.cfg:
                 screener_cfg[key] = self.cfg[key]
+
+        # 摘选规则独立于 stock-ai sn：优先用 market_scan.rules，
+        # 否则用内置的宽松默认；inherit_screener=true 可显式沿用原规则。
+        if not self.cfg.get("inherit_screener", False):
+            side = self.cfg.get("side", "buy")
+            block = dict(screener_cfg.get(side) or {})
+            block["rules"] = self.cfg.get("rules") or DEFAULT_SCAN_RULES
+            block["mode"] = self.cfg.get("mode") or DEFAULT_SCAN_MODE
+            screener_cfg[side] = block
+
         self.screener = ScreenerService(screener_config=screener_cfg)
         self._screener_cfg = screener_cfg
 

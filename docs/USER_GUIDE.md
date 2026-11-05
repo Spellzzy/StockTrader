@@ -1401,9 +1401,38 @@ python scripts/scheduled_screen.py --history
 | `exclude_st` / `exclude_delisted` | true / true | 过滤 ST、退市/停牌 |
 | `top_n` / `side` | 20 / buy | 展示数量、买入或卖出条件 |
 | `max_workers` / `kline_count` | 6 / 90 | 候选 K 线并发数、K 线根数 |
+| `mode` / `rules` | `atleast:2` / 内置 5 条 | **摘选专用规则**，见下 |
+| `inherit_screener` | false | 设为 true 则完全沿用 `screener.buy` 的规则 |
 
 支持 `STOCK_AI_MARKET_SCAN__MIN_AMOUNT_WAN=5000` 这类环境变量覆盖。完整示例见
 `config.yaml.example`。
+
+### 摘选规则为什么独立于 `stock-ai sn`
+
+`stock-ai sn` 面向十几只自选股，可以用 `mode: all` 的严格组合；全市场候选几百只，
+同样的规则几乎必然 0 命中（实测原组合：11 只 → 9 只候选 → 命中 0）。
+所以摘选默认用**宽进严出**的一组独立规则，不影响 `sn` 的行为：
+
+| 条件 | 参数 | 变化 |
+|---|---|---|
+| `ma_uptrend` | MA20 / 5 日 | 保留 |
+| `price_above_ma` | MA20 | 保留 |
+| `ma_bull` | MA5>MA10>MA20 | 新增，替代强基准条件 |
+| `macd_golden` | 最近 3 根内金叉 | 新增 |
+| `volume_expand` | 5 日均量 × **1.2** | 量比阈值从 1.5 放宽 |
+| ~~`sector_strong`~~ | — | 移除（需基准 K 线，且「必须强于大盘」过严） |
+
+聚合模式从 `all` 改为 **`atleast:2`**（5 条里至少命中 2 条），结果按命中条件数降序。
+真实库实测：11 只自选 → 9 只候选 → **命中 3 只**（德力股份 3/5、共创草坪 2/5、
+三七互娱 2/5），耗时 5.5 秒。
+
+想自己调：
+- 宽松一点：`mode: "any"`，或把 `volume_expand.ratio` 再降
+- 严格一点：`mode: "atleast:3"`，或加回 `sector_strong`
+- 完全沿用 `stock-ai sn` 的规则：`inherit_screener: true`
+- 直接写自己的 `rules` 列表（可用条件见 `stock-ai sn --list-conditions`）
+
+规则与模式都参与 `params_hash`，改规则后当天重新扫描会生成新记录，不会误复用旧结果。
 
 ### 结果落库与去重
 
