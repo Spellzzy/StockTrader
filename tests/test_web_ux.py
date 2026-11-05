@@ -4,6 +4,9 @@
 避免再出现「接口通但页面不通」或增强层没被加载的情况。
 """
 
+import os
+import re
+
 from fastapi.testclient import TestClient
 
 import app.web.api as api_mod
@@ -98,3 +101,42 @@ def test_ux_styles_present():
     for cls in (".toast-box", ".busy-bar", ".table-tools", ".picker-pop",
                 ".cmd-panel", ".skeleton-bar", ".empty-actions"):
         assert cls in css, f"style.css 缺少 {cls}"
+
+
+def test_static_resources_are_not_cached():
+    """预览 WebView 曾缓存旧 JS，导致改了代码页面仍是旧版"""
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "no-store" in page.headers.get("cache-control", "")
+    assert not page.headers.get("etag")
+
+    js = client.get("/static/p1.js?v=smoke")
+    assert js.status_code == 200
+    assert "no-store" in js.headers.get("cache-control", "")
+    assert not js.headers.get("etag")
+
+
+def test_index_injects_static_version():
+    """任一静态文件内容变化都要让引用 URL 改变"""
+    html = client.get("/").text
+    matches = re.findall(
+        r"/static/([\w.-]+\.(?:js|css))\?v=([0-9a-f]{12})", html
+    )
+    assert matches, "静态资源 URL 未注入版本号"
+    names = [m[0] for m in matches]
+    for name in ("app.js", "ux.js", "p1.js", "p2.js", "detail.js",
+                 "scan.js", "style.css"):
+        assert name in names, f"{name} 缺少版本号"
+    assert len({m[1] for m in matches}) == 1  # 一次响应内版本一致
+
+
+def test_static_version_changes_with_file(monkeypatch, tmp_path):
+    path = tmp_path / "app.js"
+    path.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(api_mod, "STATIC_DIR", tmp_path)
+    v1 = api_mod._static_version()
+
+    path.write_text("new content", encoding="utf-8")
+    os.utime(path, ns=(path.stat().st_atime_ns,
+                       path.stat().st_mtime_ns + 1_000_000_000))
+    assert api_mod._static_version() != v1

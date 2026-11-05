@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -37,6 +39,22 @@ app = FastAPI(
     version=__version__,
     docs_url="/api/docs",
 )
+
+
+@app.middleware("http")
+async def _no_cache_static(request: Request, call_next):
+    """本地单机工具：静态资源一律不缓存
+
+    预览 WebView / 浏览器会缓存 /static/*.js，导致改了代码但页面仍是旧版
+    （用户反复看到旧提示）。同时去掉 etag/last-modified，避免 304 复用旧文件。
+    """
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        for header in ("etag", "last-modified"):
+            if header in response.headers:
+                del response.headers[header]
+    return response
 
 
 # ==================== 通用工具 ====================
@@ -1281,9 +1299,25 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+def _static_version() -> str:
+    """静态文件内容版本号：任一文件变化都会让 URL 改变，绕过顽固缓存"""
+    digest = hashlib.md5()
+    for path in sorted(STATIC_DIR.glob("*")):
+        if path.is_file():
+            stat = path.stat()
+            digest.update(f"{path.name}:{stat.st_mtime_ns}:{stat.st_size}".encode())
+    return digest.hexdigest()[:12]
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     page = STATIC_DIR / "index.html"
     if not page.exists():
         return HTMLResponse("<h1>前端资源缺失，请检查 app/web/static/</h1>", status_code=500)
-    return FileResponse(page, media_type="text/html")
+
+    version = _static_version()
+    html = page.read_text(encoding="utf-8")
+    # 给 <script src> / <link href> 的静态资源加 ?v=内容版本号
+    html = re.sub(r'(?<=src="/static/)([\w.-]+)(?=")', rf'\g<1>?v={version}', html)
+    html = re.sub(r'(?<=href="/static/)([\w.-]+)(?=")', rf'\g<1>?v={version}', html)
+    return HTMLResponse(content=html)
