@@ -465,6 +465,10 @@
         }
         pop.classList.add('hidden');
         toast('已选择 ' + code, 'ok', 1600);
+        // 让表单的「代码 → 名称」自动填充也能在选择后触发
+        if (input.dispatchEvent) {
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
       }));
     }
 

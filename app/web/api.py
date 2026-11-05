@@ -243,6 +243,50 @@ async def quote(codes: str = Query(..., description="股票代码，逗号或空
     return ok({"codes": code_list, "rows": await run_in_threadpool(collect)})
 
 
+@app.get("/api/stock/name")
+async def stock_name(code: str = Query(..., min_length=4)) -> dict:
+    """代码 → 股票名称（表单自动填充用）
+
+    优先查本地 Stock 表（不触网、毫秒级）；本地没有才请求行情快照
+    （StockDataClient.quote 自带短 TTL 缓存）。查不到返回空名称，
+    不抛错，用户仍可手填。
+    """
+    from sqlalchemy import select
+
+    from app.data.stock_data_client import StockDataClient
+    from app.db.database import session_scope
+    from app.models.stock import Stock, normalize_stock_code
+
+    try:
+        norm_code = normalize_stock_code(code.strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的股票代码")
+
+    def collect():
+        try:
+            with session_scope() as s:
+                stock = s.execute(
+                    select(Stock).where(Stock.code == norm_code)
+                ).scalar_one_or_none()
+                name = (stock.name or "").strip() if stock else ""
+                if name:
+                    return {"code": norm_code, "name": name, "source": "local"}
+        except Exception as e:
+            logger.warning(f"本地股票名称查询失败 {norm_code}: {e}")
+
+        try:
+            q = (StockDataClient().quote(norm_code) or {}).get(norm_code) or {}
+            name = str(q.get("name") or "").strip()
+            if name:
+                return {"code": norm_code, "name": name, "source": "quote"}
+        except Exception as e:
+            logger.warning(f"行情名称查询失败 {norm_code}: {e}")
+
+        return {"code": norm_code, "name": "", "source": "none"}
+
+    return ok(await run_in_threadpool(collect))
+
+
 @app.get("/api/kline")
 async def kline(
     code: str = Query(..., description="股票代码"),

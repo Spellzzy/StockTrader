@@ -37,7 +37,7 @@ function makeElement(id) {
     querySelector: (sel) => makeElement(id + "::" + sel),
     querySelectorAll: () => [],
     remove() {}, focus() {}, click() {}, scrollIntoView() {},
-    closest: () => null,
+    dispatchEvent() {}, closest: () => null,
   };
 }
 
@@ -57,6 +57,11 @@ globalThis.window = globalThis;
 globalThis.location = { hash: "", pathname: "/" };
 globalThis.history = { replaceState() {} };
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+if (!globalThis.Event) {
+  globalThis.Event = class {
+    constructor(type, opts) { this.type = type; Object.assign(this, opts || {}); }
+  };
+}
 globalThis.setInterval = () => 0;      // 不真的起定时器，避免测试进程不退出
 globalThis.clearInterval = () => {};
 globalThis.fetch = async () => ({

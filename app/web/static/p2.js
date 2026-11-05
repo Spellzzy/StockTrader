@@ -65,6 +65,8 @@ async function submitTrade() {
     交易 #${esc(t.id)} · ${esc(t.stock_code)} · ${t.action === 'buy' ? '买入' : '卖出'}
     ${fmt(t.quantity, 0)} 股 @ ${fmt(t.price)}（金额 ${fmt(t.amount)}）</div>`;
   $('#w-code').value = ''; $('#w-price').value = '';
+  $('#w-name').value = '';
+  delete $('#w-name').dataset.autoName;
 }
 
 /* ---------------- 预警 ---------------- */
@@ -305,6 +307,42 @@ async function loadTradesWithEdit() {
 }
 register('trades', loadTradesWithEdit);
 
+/* ---------------- 代码 → 名称自动填充 ----------------
+   优先走 /api/stock/name（本地库命中不触网）。只覆盖「空名称」或
+   「上次自动填充的名称」，用户手动改过的名称一律保留。 */
+const NAME_FILL_TIMERS = {};
+
+function autoFillName(codeId, nameId) {
+  const codeEl = $(codeId), nameEl = $(nameId);
+  if (!codeEl || !nameEl) return;
+  const code = codeEl.value.trim();
+  const auto = nameEl.dataset.autoName || '';
+  if (nameEl.value && nameEl.value !== auto) return;
+  if (!code) return;
+  api('/api/stock/name?code=' + encodeURIComponent(code)).then(d => {
+    if (codeEl.value.trim() !== code) return;   // 期间代码又变了
+    if (d.name) {
+      nameEl.value = d.name;
+      nameEl.dataset.autoName = d.name;
+    }
+  }).catch(() => { /* 查不到名称时保持可手填 */ });
+}
+
+function bindNameFill(codeId, nameId) {
+  const el = $(codeId);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    clearTimeout(NAME_FILL_TIMERS[codeId]);
+    NAME_FILL_TIMERS[codeId] = setTimeout(() => autoFillName(codeId, nameId), 300);
+  });
+  el.addEventListener('change', () => {
+    clearTimeout(NAME_FILL_TIMERS[codeId]);
+    autoFillName(codeId, nameId);
+  });
+}
+bindNameFill('pos-code', 'pos-name');
+bindNameFill('w-code', 'w-name');
+
 function openPosEdit(btn, mode = 'edit') {
   const box = $('#pos-edit-box');
   const creating = mode === 'create';
@@ -317,6 +355,7 @@ function openPosEdit(btn, mode = 'edit') {
   $('#pos-qty').value = creating ? '' : btn.dataset.qty;
   $('#pos-cost').value = creating ? '' : btn.dataset.cost;
   $('#pos-name').value = creating ? '' : btn.dataset.name;
+  delete $('#pos-name').dataset.autoName;
   $('#pos-reason').value = '';
   $('#pos-confirm').checked = false;
   $('#pos-hint').textContent = creating
