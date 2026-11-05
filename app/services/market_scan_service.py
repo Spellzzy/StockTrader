@@ -29,6 +29,10 @@ from app.services.screener_service import ScreenerService
 
 logger = logging.getLogger(__name__)
 
+
+class ScanCancelled(Exception):
+    """用户主动取消了本次扫描"""
+
 # market_scan 中需要透传给 ScreenerService 的键
 _SCREENER_KEYS = (
     "min_kline", "kline_count", "max_workers", "max_kline_age_days",
@@ -169,13 +173,18 @@ class MarketScanService:
         return True
 
     def prefilter(
-        self, codes: list[str], progress_cb: Optional[Callable[[int, int, int], None]] = None
+        self,
+        codes: list[str],
+        progress_cb: Optional[Callable[[int, int, int], None]] = None,
+        cancel_event=None,
     ) -> tuple[list[str], dict]:
         """批量 quote 预筛，返回 (候选代码, 统计)"""
         batch_size = max(1, int(self.cfg.get("batch_size", 50)))
         rows: list[dict] = []
 
         for i in range(0, len(codes), batch_size):
+            if cancel_event is not None and cancel_event.is_set():
+                raise ScanCancelled("预筛阶段被取消")
             batch = codes[i:i + batch_size]
             try:
                 data = self.client.quote(*batch) or {}
@@ -271,6 +280,12 @@ class MarketScanService:
                 "duration_seconds": r.duration_seconds, "created_at": r.created_at,
             } for r in runs]
 
+    def get_run(self, run_id: int) -> Optional[dict]:
+        """按 ID 读取某次扫描的完整结果（Web 历史回看）"""
+        with self.scope() as s:
+            run = s.get(ScreenRun, run_id)
+            return self._to_dict(run) if run else None
+
     # ==================== 主流程 ====================
 
     def run(
@@ -281,6 +296,7 @@ class MarketScanService:
         save: bool = True,
         prefilter_cb: Optional[Callable[[int, int, int], None]] = None,
         screen_cb: Optional[Callable[[int, int, int], None]] = None,
+        cancel_event=None,
     ) -> dict:
         """跑一次全市场摘选
 
@@ -289,6 +305,7 @@ class MarketScanService:
             side: buy / sell，默认取配置
             force: 忽略「今天同参数已跑过」的缓存
             save: 是否落库
+            cancel_event: threading.Event，置位后在批次边界中止并抛 ScanCancelled
         """
         started = time.perf_counter()
         pool = pool or self.cfg.get("pool", "all_a")
@@ -303,10 +320,31 @@ class MarketScanService:
 
         universe = self.screener.resolve_pool(pool)
         logger.info(f"股票池 {pool}: {len(universe)} 只")
-        candidates, stats = self.prefilter(universe, progress_cb=prefilter_cb)
+        candidates, stats = self.prefilter(
+            universe, progress_cb=prefilter_cb, cancel_event=cancel_event
+        )
         logger.info(f"预筛后候选: {stats['candidates']} 只")
 
-        hits = self.screener.screen(candidates, side=side, progress_cb=screen_cb)
+        if cancel_event is None:
+            hits = self.screener.screen(candidates, side=side, progress_cb=screen_cb)
+        else:
+            # 分批提交，取消时最多等当前这一批（否则 ThreadPoolExecutor 会等全部 futures）
+            chunk = max(1, int(self.cfg.get("cancel_chunk", 50)))
+            hits = []
+            for start in range(0, len(candidates), chunk):
+                if cancel_event.is_set():
+                    raise ScanCancelled("条件评估阶段被取消")
+                part_codes = candidates[start:start + chunk]
+
+                def _part_cb(done, total, found, _start=start):
+                    if cancel_event.is_set():
+                        raise ScanCancelled("条件评估阶段被取消")
+                    if screen_cb:
+                        screen_cb(_start + done, len(candidates), len(hits) + found)
+
+                hits.extend(self.screener.screen(
+                    part_codes, side=side, progress_cb=_part_cb
+                ))
         # 命中条件数越多越靠前，同分按代码稳定排序
         hits.sort(key=lambda h: (-len(h.matched), h.code))
         top_n = int(self.cfg.get("top_n", 20))

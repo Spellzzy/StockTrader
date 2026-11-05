@@ -20,7 +20,8 @@
   const DETAIL_ONLY_IDS = ['predict-code'];
   const TABS = [
     ['overview', '总览'], ['market', '行情'], ['analysis', '统计'],
-    ['backtest', '回测'], ['lab', '策略实验室'], ['predict', 'AI 预测'],
+    ['backtest', '回测'], ['lab', '策略实验室'], ['scan', '市场摘选'],
+    ['predict', 'AI 预测'],
     ['trades', '交易持仓'], ['write', '录入交易'], ['alerts', '预警'],
     ['paper', '模拟盘'], ['settings', '设置'], ['reports', '报告'],
   ];

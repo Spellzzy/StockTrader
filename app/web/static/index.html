@@ -37,6 +37,7 @@
     <button class="tab" data-tab="analysis">统计</button>
     <button class="tab" data-tab="backtest">回测</button>
     <button class="tab" data-tab="lab">策略实验室</button>
+    <button class="tab" data-tab="scan">市场摘选</button>
     <button class="tab" data-tab="predict">AI 预测</button>
     <button class="tab" data-tab="trades">交易持仓</button>
     <button class="tab" data-tab="write">录入交易</button>
@@ -314,6 +315,49 @@
       <div id="settings-note" class="result-box dim"></div>
     </section>
 
+    <!-- 市场摘选 -->
+    <section id="panel-scan" class="panel hidden">
+      <div class="section-head"><h2>全市场摘选</h2>
+        <span class="dim">批量行情预筛 → 条件评估 → 按命中条件数排序</span></div>
+
+      <div class="result-box">
+        <div class="form-grid">
+          <label>股票池<select id="scan-pool">
+            <option value="watchlist">我的自选</option>
+            <option value="all_a">全 A 股</option>
+            <option value="portfolio">当前持仓</option>
+          </select></label>
+          <label>展示 Top N<input id="scan-top" type="number" value="20" min="1" max="100"></label>
+        </div>
+        <label class="confirm"><input id="scan-confirm" type="checkbox">
+          确认执行扫描（全 A 股可能需要几分钟）</label>
+        <div class="toolbar">
+          <button id="scan-start" class="btn primary">开始扫描</button>
+          <button id="scan-cancel" class="btn ghost danger" disabled>取消</button>
+          <span id="scan-hint" class="dim"></span>
+        </div>
+        <div id="scan-progress" class="scan-progress hidden">
+          <div class="scan-bar"><div id="scan-bar-fill"></div></div>
+          <span id="scan-progress-text" class="dim"></span>
+        </div>
+      </div>
+
+      <div id="scan-cards" class="cards"></div>
+      <div class="section-head"><h2>命中清单</h2>
+        <span id="scan-result-time" class="dim"></span></div>
+      <div class="table-wrap"><table id="scan-hits">
+        <thead><tr><th>代码</th><th>名称</th><th class="num">现价</th>
+          <th class="num">命中</th><th>命中条件</th></tr></thead>
+        <tbody></tbody></table></div>
+
+      <div class="section-head"><h2>历史扫描</h2>
+        <span class="dim">点击「查看」回看当次结果</span></div>
+      <div class="table-wrap"><table id="scan-history">
+        <thead><tr><th>#</th><th>日期</th><th>池</th><th class="num">候选</th>
+          <th class="num">命中</th><th class="num">耗时(s)</th><th>操作</th></tr></thead>
+        <tbody></tbody></table></div>
+    </section>
+
     <!-- 报告 -->
     <section id="panel-reports" class="panel hidden">
       <div class="section-head"><h2>已生成报告</h2><span class="dim">HTML 可直接打开；Markdown 为日报正文</span></div>
@@ -361,5 +405,6 @@
   <script src="/static/p1.js"></script>
   <script src="/static/p2.js"></script>
   <script src="/static/detail.js"></script>
+  <script src="/static/scan.js"></script>
 </body>
 </html>

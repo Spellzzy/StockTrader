@@ -1130,6 +1130,72 @@ async def write_watchlist(req: WatchlistWrite) -> dict:
     return await _write(req, "watchlist", execute)
 
 
+# ==================== 全市场摘选（后台任务 + 历史回看） ====================
+
+class ScanStartWrite(WriteBase):
+    pool: str = ""
+    force: bool = False
+    top: int = Field(0, ge=0, le=100)
+
+
+@app.post("/api/scan/start")
+async def scan_start(req: ScanStartWrite) -> dict:
+    """启动一次全市场摘选（confirm + 幂等），立即返回 task_id
+
+    真正扫描在后台线程执行，用 /api/scan/status 轮询进度。
+    """
+    from app.web.scan_tasks import SCAN_TASKS
+
+    def execute():
+        return SCAN_TASKS.start(pool=req.pool, force=req.force, top=req.top)
+
+    return await _write(req, "scan", execute)
+
+
+@app.get("/api/scan/status")
+async def scan_status(task_id: str = "") -> dict:
+    from app.web.scan_tasks import SCAN_TASKS
+
+    task = SCAN_TASKS.get(task_id) if task_id else SCAN_TASKS.current()
+    return ok({"task": task})
+
+
+@app.post("/api/scan/cancel")
+async def scan_cancel(task_id: str = "") -> dict:
+    """请求取消（无害操作，不需要 confirm）；最多等待当前评估批次结束"""
+    from app.web.scan_tasks import SCAN_TASKS
+
+    return ok(SCAN_TASKS.cancel(task_id))
+
+
+@app.get("/api/scan/runs")
+async def scan_runs(limit: int = 10) -> dict:
+    from app.services.market_scan_service import MarketScanService
+
+    return ok({"rows": await run_in_threadpool(
+        lambda: MarketScanService().list_runs(limit)
+    )})
+
+
+@app.get("/api/scan/run/{run_id}")
+async def scan_run(run_id: int) -> dict:
+    from app.services.market_scan_service import MarketScanService
+
+    run = await run_in_threadpool(lambda: MarketScanService().get_run(run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="扫描记录不存在")
+    return ok({"run": run})
+
+
+@app.get("/api/scan/latest")
+async def scan_latest() -> dict:
+    from app.services.market_scan_service import MarketScanService
+
+    return ok({"run": await run_in_threadpool(
+        lambda: MarketScanService().latest()
+    )})
+
+
 # 静态资源挂在最后，避免覆盖 API 路由
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
