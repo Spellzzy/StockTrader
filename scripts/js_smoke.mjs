@@ -310,6 +310,86 @@ if (shown !== digestBody) throw new Error("Markdown 正文被改写，未按原�
 globalThis.fetch = origFetch;
 console.log("  报告页 Markdown 原文 / HTML 新标签行为断言 OK");
 
+/* 个股详情量比：源字段 / 回退值 / 全缺显示「—」，且不顶替 60 日均量倍数 */
+if (typeof ST.detailVolumeRatio !== "function") {
+  throw new Error("detail.js 未暴露 detailVolumeRatio");
+}
+if (typeof ST.detailOverviewHtml !== "function") {
+  throw new Error("detail.js 未暴露 detailOverviewHtml");
+}
+
+function assertRatio(input, expect) {
+  const view = ST.detailVolumeRatio(input);
+  if (view.text !== expect.text) {
+    throw new Error(`量比文案应为 ${expect.text}，实际 ${view.text}`);
+  }
+  if ((view.label || "") !== (expect.label || "")) {
+    throw new Error(`量比标签应为「${expect.label || ""}」，实际「${view.label || ""}」`);
+  }
+  if (view.cls !== expect.cls) {
+    throw new Error(`量比着色应为 ${expect.cls}，实际 ${view.cls}`);
+  }
+}
+
+assertRatio({ quote: { volume_ratio: 3 }, volume_ratio: 1 }, { text: "3.00", label: "放量", cls: "up" });
+assertRatio({ quote: { volume_ratio: 1.5, vol_ratio: 0.2 } }, { text: "1.50", label: "放量", cls: "warn" });
+assertRatio({ quote: { volume_ratio: 0, vol_ratio: 1.2 } }, { text: "1.20", label: "平量", cls: "down" });
+assertRatio({ quote: {}, volume_ratio: 0.8 }, { text: "0.80", label: "平量", cls: "down" });
+assertRatio({ quote: { volume_ratio: 0.79 } }, { text: "0.79", label: "缩量", cls: "dim" });
+assertRatio({ quote: {}, volume_ratio: null }, { text: "—", label: "", cls: "dim" });
+assertRatio({}, { text: "—", label: "", cls: "dim" });
+
+const emptyOverview = ST.detailOverviewHtml({
+  code: "sh600519",
+  quote: { volume: 12345, turnover_rate: 1.25, turnover: 99, price: 10, change_percent: 0.2 },
+  volume_ratio: null,
+  kline: [
+    { close: 10, volume: 1000 },
+    { close: 11, volume: 2000 },
+  ],
+  tech: {},
+  stock: {},
+  holding: null,
+  alert_count: 0,
+  recent_trades: [],
+});
+if (!emptyOverview.includes("量比") || !emptyOverview.includes("—")) {
+  throw new Error("无量比时概览应显示「量比 —」");
+}
+if (emptyOverview.includes("放量") || emptyOverview.includes("平量") || emptyOverview.includes("缩量")) {
+  throw new Error("无量比时不应出现放量/平量/缩量标签");
+}
+if (!emptyOverview.includes("最新量 / 均量")) {
+  throw new Error("60 日「最新量 / 均量」被量比顶替或删掉了");
+}
+if (!emptyOverview.includes("手")) {
+  throw new Error("成交量应继续以「手」展示");
+}
+if (!emptyOverview.includes("1.25%") || emptyOverview.includes("99")) {
+  throw new Error("换手应使用 turnover_rate，而不是 turnover");
+}
+
+const hotOverview = ST.detailOverviewHtml({
+  code: "sh600519",
+  quote: { volume_ratio: 3.2, volume: 100, turnover_rate: 2.5, price: 10, change_percent: 1 },
+  kline: [
+    { close: 10, volume: 1000 },
+    { close: 12, volume: 4000 },
+  ],
+  tech: {},
+  stock: {},
+  holding: null,
+  alert_count: 0,
+  recent_trades: [],
+});
+if (!hotOverview.includes("3.20") || !hotOverview.includes("放量")) {
+  throw new Error("有源量比时概览应醒目展示「量比 3.20」和放量标签");
+}
+if (!hotOverview.includes("最新量 / 均量")) {
+  throw new Error("有量比时仍要单独保留「最新量 / 均量」");
+}
+console.log("  个股详情量比展示行为断言 OK");
+
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);
