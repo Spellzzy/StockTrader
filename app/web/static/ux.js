@@ -264,6 +264,7 @@
     const root = scope || document.querySelector('main');
     if (!root || !root.querySelectorAll) return;
     root.querySelectorAll('td').forEach(td => {
+      if (td.closest && td.closest('tr.digest-evidence-row')) return;
       if (td.classList.contains('stock-link') || td.classList.contains('empty')
           || td.classList.contains('num')) return;
       if (td.querySelector('a, button, input')) return;
@@ -404,8 +405,13 @@
     const target = e.target;
     const td = target && target.closest && target.closest('td.stock-link');
     if (td && ST.openStockDetail) {
+      const digestRow = td.closest && td.closest('tr.digest-evidence-row');
       e.stopPropagation();
       e.preventDefault();
+      if (digestRow && typeof ST.activateDigestEvidenceRow === 'function') {
+        ST.activateDigestEvidenceRow(digestRow);
+        return;
+      }
       ST.openStockDetail(td.dataset.code);
     }
   }, true);

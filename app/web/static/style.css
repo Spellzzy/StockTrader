@@ -226,6 +226,12 @@ th.sortable:hover { color: var(--accent); }
   gap: 12px; padding: 18px 22px 14px; border-bottom: 1px solid var(--line); }
 .detail-head h2 { margin: 0 0 4px; font-size: 18px; }
 .detail-head .btn { padding: 5px 12px; font-size: 13px; }
+.detail-evidence { padding: 12px 22px 4px; border-bottom: 1px solid var(--line); }
+.detail-evidence h3 { font-size: 13px; margin: 0 0 8px; color: var(--dim);
+  font-weight: 600; letter-spacing: .3px; }
+.detail-evidence .detail-kv,
+.detail-evidence .quality-warn { margin-bottom: 12px; }
+tr.digest-evidence-row:hover { background: rgba(91,157,255,.08); }
 .detail-body { flex: 1; overflow: auto; padding: 18px 22px 24px; }
 .detail-body h3 { font-size: 13px; margin: 20px 0 10px; color: var(--dim);
   font-weight: 600; letter-spacing: .3px; }
