@@ -1,4 +1,8 @@
-"""路线 A 第一刀：SmartDigest 透传/渲染 combined.quality"""
+"""路线 A：SmartDigest 透传 combined.quality，并渲染可信摘要。
+
+第一刀：弱于基线时单行「⚠️ 可信度:」。
+第二刀：看涨/看跌在有 quality 时改为四行可信摘要卡片，替换该单行；震荡仍只保留单行警示。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -73,7 +77,16 @@ def test_generate_projects_quality_onto_bullish_and_bearish_items(monkeypatch):
     plain = digest["plain_text"]
     assert "准确率低于随机基线" in md
     assert "准确率低于随机基线" in plain
-    assert md.count("⚠️ 可信度:") >= 2
+    # 看涨/看跌有 quality：完整卡片替换单行警示，不双写
+    assert md.count("📎 可信摘要") == 2
+    assert plain.count("📎 可信摘要") == 2
+    assert "⚠️ 可信度:" not in md
+    assert "⚠️ 可信度:" not in plain
+    assert "- 质量: 弱于基线" in md
+    assert "- 质量: 弱于基线" in plain
+    assert "- 依据: 样例因子" in md
+    assert "- 信号: 看涨 · 评分 +12.0 · ⭐⭐" in md
+    assert "- 信号: 看跌 · 评分 -18.0 · ⭐" in plain
 
 
 def test_markdown_and_plain_warn_with_default_note_when_quality_note_empty():
@@ -121,8 +134,14 @@ def test_markdown_and_plain_warn_with_default_note_when_quality_note_empty():
     }
     md = svc._build_markdown_digest(digest, {})
     plain = svc._build_plain_digest(digest, {})
-    assert "弱于基线，勿当强信号" in md
-    assert "弱于基线，勿当强信号" in plain
+    assert "- 说明: 弱于基线，勿当强信号" in md
+    assert "- 说明: 弱于基线，勿当强信号" in plain
+    assert md.count("- 说明: 弱于基线，勿当强信号") == 2
+    assert "⚠️ 📎 可信摘要" in md
+    assert "⚠️ 可信度:" not in md
+    assert "⚠️ 可信度:" not in plain
+    assert "- 依据:" not in md
+    assert "- 依据:" not in plain
 
 
 def test_no_quality_no_crash_no_false_warning():
@@ -181,3 +200,179 @@ def test_quality_warning_helper():
         SmartDigestService._quality_warning({"quality": WEAK_QUALITY})
         == "准确率低于随机基线，信号已降权"
     )
+
+
+def _item(code, name, signal, score, stars, factors, quality="__missing__"):
+    item = {
+        "code": code,
+        "name": name,
+        "signal": signal,
+        "score": score,
+        "confidence": 55.0,
+        "stars": stars,
+        "key_factors": factors,
+    }
+    if quality != "__missing__":
+        item["quality"] = quality
+    return item
+
+
+def _digest(bullish=None, bearish=None, neutral=None):
+    bullish = bullish or []
+    bearish = bearish or []
+    neutral = neutral or []
+    return {
+        "date": "2026-11-06 12:00",
+        "total": len(bullish) + len(bearish) + len(neutral),
+        "bullish": bullish,
+        "bearish": bearish,
+        "neutral": neutral,
+        "llm_reports": {},
+        "market_picks": {},
+    }
+
+
+def _render(digest):
+    svc = SmartDigestService()
+    return (
+        svc._build_markdown_digest(digest, {}),
+        svc._build_plain_digest(digest, {}),
+    )
+
+
+def _cards(text: str) -> list[str]:
+    """抽出可信摘要块（去掉缩进与 plain 的 yellow 标记），便于两路对照。"""
+    cards = []
+    buf = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("[yellow]"):
+            line = line[len("[yellow]"):]
+        if line.endswith("[/yellow]"):
+            line = line[: -len("[/yellow]")]
+        line = line.strip()
+        is_title = line.startswith("📎 可信摘要") or line.startswith("⚠️ 📎 可信摘要")
+        if is_title:
+            if buf:
+                cards.append("\n".join(buf))
+            buf = [line]
+        elif buf and line.startswith("- "):
+            buf.append(line)
+        elif buf:
+            cards.append("\n".join(buf))
+            buf = []
+    if buf:
+        cards.append("\n".join(buf))
+    return cards
+
+
+def _credibility_card(item):
+    render = getattr(SmartDigestService, "_credibility_card", None)
+    if render is None:
+        return None
+    return render(item)
+
+
+_SCARE = ("⚠️", "勿当", "弱于", "警告", "不具备", "恐吓")
+
+
+def test_weak_bullish_and_bearish_render_full_card_in_markdown_and_plain():
+    bull = _item(
+        "sh600001", "弱看涨", "看涨", 12.0, 2, ["动量", "放量"], quality=WEAK_QUALITY,
+    )
+    bear = _item(
+        "sz000001", "弱看跌", "看跌", -18.0, 1, ["破位"], quality=dict(WEAK_QUALITY, note=""),
+    )
+    md, plain = _render(_digest(bullish=[bull], bearish=[bear]))
+
+    bull_card = "\n".join([
+        "⚠️ 📎 可信摘要",
+        "- 信号: 看涨 · 评分 +12.0 · ⭐⭐",
+        "- 质量: 弱于基线",
+        "- 说明: 准确率低于随机基线，信号已降权",
+        "- 依据: 动量、放量",
+    ])
+    bear_card = "\n".join([
+        "⚠️ 📎 可信摘要",
+        "- 信号: 看跌 · 评分 -18.0 · ⭐",
+        "- 质量: 弱于基线",
+        "- 说明: 弱于基线，勿当强信号",
+        "- 依据: 破位",
+    ])
+    assert _credibility_card(bull) == bull_card
+    assert _credibility_card(bear) == bear_card
+    assert _cards(md) == [bull_card, bear_card]
+    assert _cards(plain) == [bull_card, bear_card]
+    assert "⚠️ 可信度:" not in md
+    assert "⚠️ 可信度:" not in plain
+
+
+def test_strong_card_says_better_than_baseline_without_scare_copy():
+    item = _item(
+        "sh600519", "强看涨", "看涨", 8.5, 4,
+        ["均线多头", "放量", "北向流入", "不应出现的第四条"],
+        quality={"below_baseline": False, "note": "  "},
+    )
+    expected = "\n".join([
+        "📎 可信摘要",
+        "- 信号: 看涨 · 评分 +8.5 · ⭐⭐⭐⭐",
+        "- 质量: 优于基线",
+        "- 说明: 质量正常",
+        "- 依据: 均线多头、放量、北向流入",
+    ])
+    assert _credibility_card(item) == expected
+    for word in _SCARE:
+        assert word not in expected
+
+    noted = _item(
+        "sh600519", "强看涨", "看涨", 8.5, 4, [],
+        quality={"below_baseline": False, "note": "样本充足，与基线持平"},
+    )
+    noted_card = _credibility_card(noted)
+    assert noted_card is not None
+    assert "- 说明: 样本充足，与基线持平" in noted_card
+    assert "质量正常" not in noted_card
+    assert "- 依据:" not in noted_card
+    for word in _SCARE:
+        assert word not in noted_card
+
+    md, plain = _render(_digest(bullish=[item, noted]))
+    assert _cards(md) == _cards(plain)
+    assert "优于基线" in md and "优于基线" in plain
+    assert "⚠️ 可信度:" not in md and "⚠️ 可信度:" not in plain
+
+
+def test_missing_or_non_dict_quality_omits_card_and_does_not_crash():
+    missing = _item("sh600000", "无质量", "看涨", 3.0, 1, ["因子"])
+    bad = _item("sz000001", "坏质量", "看跌", -3.0, 1, ["因子"], quality="nope")
+    assert _credibility_card(missing) is None
+    assert _credibility_card(bad) is None
+    md, plain = _render(_digest(bullish=[missing], bearish=[bad]))
+    assert "📎 可信摘要" not in md and "📎 可信摘要" not in plain
+    assert "⚠️ 可信度:" not in md and "⚠️ 可信度:" not in plain
+    assert "无质量" in md and "坏质量" in plain
+
+
+def test_sideways_weak_quality_keeps_warning_line_without_full_card():
+    sideways = _item(
+        "sz000003", "震荡股", "震荡", 0.5, 2, ["横盘"],
+        quality={"below_baseline": True, "note": "震荡模型偏弱"},
+    )
+    bull = _item(
+        "sh600001", "弱看涨", "看涨", 6.0, 2, [],
+        quality={"below_baseline": True, "note": "看涨模型偏弱"},
+    )
+    md, plain = _render(_digest(bullish=[bull], neutral=[sideways]))
+    for text in (md, plain):
+        assert text.count("📎 可信摘要") == 1
+        assert text.count("⚠️ 可信度:") == 1
+        assert "⚠️ 可信度: 震荡模型偏弱" in text
+        assert "⚠️ 可信度: 看涨模型偏弱" not in text
+        assert "- 说明: 看涨模型偏弱" in text
+        assert "- 质量:" in text
+    # 震荡段本身没有四行卡片
+    for text in (md, plain):
+        neutral_part = text.split("继续持有", 1)[1]
+        assert "📎 可信摘要" not in neutral_part
+        assert "- 质量:" not in neutral_part
+        assert "- 依据:" not in neutral_part
