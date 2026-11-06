@@ -333,10 +333,16 @@ async function refresh() {
   }
 }
 
+/* 侧栏项仍是 .tab + data-tab。命令面板、空状态按钮和 #stock= 深链
+   都通过点击这些按钮进入同一条切页路径。 */
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(b => {
+      b.classList.remove('active');
+      if (b.removeAttribute) b.removeAttribute('aria-current');
+    });
     btn.classList.add('active');
+    if (btn.setAttribute) btn.setAttribute('aria-current', 'page');
     activeTab = btn.dataset.tab;
     document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
     $('panel-' + activeTab).classList.remove('hidden');

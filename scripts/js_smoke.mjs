@@ -469,6 +469,63 @@ if (ST.recentVolumeHtml([]) !== "" || ST.recentVolumeHtml(null) !== "") {
 }
 console.log("  个股详情量比与近 5 日量能行为断言 OK");
 
+/* 侧栏：展开态与组折叠写入 localStorage，且不改当前页、不改紧凑密度 */
+if (!ST.nav || typeof ST.nav.setExpanded !== "function"
+    || typeof ST.nav.setGroupCollapsed !== "function"
+    || typeof ST.nav.restore !== "function") {
+  throw new Error("ux.js 未暴露侧栏导航状态 ST.nav");
+}
+localStorage.setItem("st.tab", "market");
+ST.nav.setExpanded(false);
+if (!document.body.classList.contains("side-rail")
+    || document.body.classList.contains("side-expanded")) {
+  throw new Error("收起侧栏未切到图标轨");
+}
+if (localStorage.getItem("st.side") !== "rail") {
+  throw new Error("侧栏收起态未写入 localStorage");
+}
+if (localStorage.getItem("st.tab") !== "market") {
+  throw new Error("收起侧栏丢掉了当前页");
+}
+ST.nav.setExpanded(true);
+if (localStorage.getItem("st.side") !== "expanded"
+    || !document.body.classList.contains("side-expanded")
+    || document.body.classList.contains("side-rail")) {
+  throw new Error("展开侧栏未持久化");
+}
+ST.nav.setGroupCollapsed("analysis", true);
+if (!document.getElementById("nav-group-analysis").classList.contains("is-collapsed")) {
+  throw new Error("组折叠未反映到导航组");
+}
+let storedGroups;
+try {
+  storedGroups = JSON.parse(localStorage.getItem("st.nav.groups") || "{}");
+} catch (e) {
+  throw new Error("组折叠状态不是 JSON");
+}
+if (storedGroups.analysis !== true) throw new Error("组折叠未写入 localStorage");
+if (localStorage.getItem("st.density") !== "compact") {
+  throw new Error("侧栏状态不应改写紧凑密度");
+}
+localStorage.setItem("st.nav.groups", JSON.stringify({ trade: true }));
+localStorage.setItem("st.side", "rail");
+document.body.classList.remove("side-rail");
+document.body.classList.remove("side-expanded");
+ST.nav.restore();
+if (!document.body.classList.contains("side-rail")) {
+  throw new Error("刷新后未恢复图标轨");
+}
+if (!document.getElementById("nav-group-trade").classList.contains("is-collapsed")) {
+  throw new Error("刷新后未恢复组折叠");
+}
+if (document.getElementById("nav-group-analysis").classList.contains("is-collapsed")) {
+  throw new Error("未保存的组不应保持折叠");
+}
+if (localStorage.getItem("st.tab") !== "market") {
+  throw new Error("恢复侧栏偏好时丢掉了当前页");
+}
+console.log("  侧栏展开态与组折叠持久化行为断言 OK");
+
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);
