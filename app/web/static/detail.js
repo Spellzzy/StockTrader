@@ -114,6 +114,41 @@
       <div class="v">${num(v)}%</div></div>`;
   }
 
+  /* 近 5 日量能只用详情里已有的 kline[].volume，不再请求新接口。 */
+  function recentVolumeHtml(krows) {
+    const rows = Array.isArray(krows) ? krows.slice(-5) : [];
+    if (!rows.length) return '';
+    const vols = rows.map(r => {
+      const n = Number(r && r.volume);
+      return Number.isFinite(n) ? n : 0;
+    });
+    const max = Math.max(1, ...vols);
+    let steps = 0;
+    let rising = null;
+    for (let i = vols.length - 1; i > 0; i--) {
+      if (vols[i] === vols[i - 1]) break;
+      const up = vols[i] > vols[i - 1];
+      if (rising === null) rising = up;
+      else if (rising !== up) break;
+      steps++;
+    }
+    let hint = `近 ${vols.length} 日量能`;
+    if (steps >= 1) hint += rising ? ` · 连放 ${steps + 1} 日` : ` · 连缩 ${steps + 1} 日`;
+    const bars = rows.map((r, i) => {
+      const prev = i > 0 ? vols[i - 1] : null;
+      const dir = prev === null || vols[i] === prev ? '' : (vols[i] > prev ? 'up' : 'down');
+      const h = Math.max(4, Math.round(vols[i] / max * 100));
+      const raw = String((r && r.date) || '');
+      const label = raw.length >= 10 ? raw.slice(5, 10) : (raw || String(i + 1));
+      return `<div class="vol-col" title="${esc(label + ' ' + cap(vols[i]))}">
+        <div class="vol-track"><div class="vol-bar ${dir}" style="height:${h}%"></div></div>
+        <span>${esc(label)}</span></div>`;
+    }).join('');
+    return `<h3>近 ${vols.length} 日量能</h3>
+      <div class="vol-mini" aria-label="${esc(hint)}">${bars}</div>
+      <div class="dim vol-hint">${esc(hint)}</div>`;
+  }
+
   function overviewHtml(d) {
     const q = d.quote || {}, tech = d.tech || {}, s = d.stock || {}, h = d.holding;
     const price = q.price || 0;
@@ -184,6 +219,7 @@
       <h3>五档盘口</h3>${orderBook(q) || '<div class="dim">暂无盘口数据</div>'}
       ${innerOuter(q)}
       <h3>近 ${closes.length} 个交易日收盘走势</h3>${chart}
+      ${recentVolumeHtml(krows)}
       <h3>技术指标（基于上述收盘价）</h3>${kv([
         ['MA5', num(tech.ma5, 3)], ['MA20', num(tech.ma20, 3)],
         ['5 日涨跌', pctCell(changeN(krows, 5))],
@@ -602,6 +638,7 @@
   ST.currentStockDetail = () => currentData;
   ST.detailVolumeRatio = detailVolumeRatio;
   ST.detailOverviewHtml = overviewHtml;
+  ST.recentVolumeHtml = recentVolumeHtml;
 
   $('detail-close').addEventListener('click', close);
   $('stock-detail').addEventListener('click', e => {

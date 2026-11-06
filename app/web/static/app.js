@@ -136,6 +136,74 @@ async function loadKline() {
 }
 
 /* ---------------- 报告 ---------------- */
+function reportBadge(kind) {
+  if (kind === 'html') return '<span class="badge html">HTML</span>';
+  if (kind === 'json') return '<span class="badge json">JSON</span>';
+  return '<span class="badge">MD</span>';
+}
+
+function qualityPreviewText(q) {
+  if (!q || typeof q !== 'object' || Array.isArray(q)) return '';
+  const bits = [];
+  if (q.below_baseline === true) bits.push('弱于基线');
+  else if (q.below_baseline === false) bits.push('优于基线');
+  const acc = q.mean_accuracy;
+  const base = q.baseline;
+  if (typeof acc === 'number' && typeof base === 'number') {
+    bits.push(`准确率 ${(acc * 100).toFixed(1)}% · 基线 ${(base * 100).toFixed(1)}%`);
+  } else if (typeof acc === 'number') {
+    bits.push(`准确率 ${(acc * 100).toFixed(1)}%`);
+  } else if (typeof base === 'number') {
+    bits.push(`基线 ${(base * 100).toFixed(1)}%`);
+  }
+  if (typeof q.factor === 'number') bits.push(`降权 ${q.factor.toFixed(2)}`);
+  if (typeof q.note === 'string' && q.note.trim()) bits.push(q.note.trim());
+  return bits.join(' · ');
+}
+
+function digestRows(items) {
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length) return '<div class="dim">无</div>';
+  const body = rows.map(item => {
+    const q = item && item.quality;
+    const conf = q && typeof q.confidence === 'number' ? q.confidence : item && item.confidence;
+    const models = q && typeof q.models_used === 'number' ? q.models_used : item && item.models_used;
+    const quality = qualityPreviewText(q);
+    const extra = typeof models === 'number'
+      ? (quality ? ' · ' : '') + '模型数 ' + (Number.isInteger(models) ? String(models) : models.toFixed(2))
+      : '';
+    const score = Number(item && item.score);
+    return `<tr>
+      <td>${esc(item && item.code)}</td>
+      <td>${esc(item && item.name)}</td>
+      <td>${esc(item && item.signal)}</td>
+      <td class="num">${Number.isFinite(score) ? score.toFixed(1) : '-'}</td>
+      <td class="num">${typeof conf === 'number' ? conf.toFixed(1) + '%' : '-'}</td>
+      <td>${esc(quality)}${esc(extra)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="table-wrap"><table><thead><tr>
+      <th>代码</th><th>名称</th><th>信号</th><th class="num">评分</th>
+      <th class="num">置信度</th><th>质量</th>
+    </tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderDigestPreview(name, data) {
+  const box = document.createElement('div');
+  box.className = 'report-json';
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    box.textContent = '无法按结构化日报预览';
+    return box;
+  }
+  const total = data.total === undefined || data.total === null ? '-' : data.total;
+  box.innerHTML = `<div class="report-json-head"><strong>${esc(name || '结构化日报')}</strong>
+      <span class="dim">只读预览 · ${esc(data.date || '-')} · ${esc(data.slot || '-')} · ${esc(total)} 只</span></div>
+    <h3>看涨 · ${(Array.isArray(data.bullish) ? data.bullish.length : 0)}</h3>${digestRows(data.bullish)}
+    <h3>看跌 · ${(Array.isArray(data.bearish) ? data.bearish.length : 0)}</h3>${digestRows(data.bearish)}
+    <h3>震荡 · ${(Array.isArray(data.neutral) ? data.neutral.length : 0)}</h3>${digestRows(data.neutral)}`;
+  return box;
+}
+
 async function openMarkdownReport(name) {
   clearError();
   try {
@@ -146,6 +214,18 @@ async function openMarkdownReport(name) {
     pre.className = 'report-md';
     pre.textContent = String(d.content ?? '');
     box.replaceChildren(pre);
+  } catch (e) {
+    showError(String(e.message || e));
+  }
+}
+
+async function openJsonReport(name) {
+  clearError();
+  try {
+    const data = await api('/api/reports/' + encodeURIComponent(name) + '/content');
+    const box = $('report-body');
+    box.classList.remove('hidden');
+    box.replaceChildren(renderDigestPreview(name, data));
   } catch (e) {
     showError(String(e.message || e));
   }
@@ -165,18 +245,22 @@ async function loadReports() {
   }
   $('report-list').innerHTML = files.map(f => {
     const kb = (f.size / 1024).toFixed(1);
-    const tag = f.kind === 'html' ? '<span class="badge html">HTML</span>' : '<span class="badge">MD</span>';
-    const head = `<div class="name">${esc(f.name)}${tag}</div>`;
+    const head = `<div class="name">${esc(f.name)}${reportBadge(f.kind)}</div>`;
     const meta = `<div class="meta">${kb} KB · ${esc((f.updated_at || '').replace('T', ' '))}</div>`;
     if (f.kind === 'html') {
       const href = `/reports/${encodeURIComponent(f.name)}`;
       return `<a class="report-item" href="${href}" target="_blank" rel="noopener">${head}${meta}</a>`;
+    }
+    if (f.kind === 'json') {
+      return `<button type="button" class="report-item" data-json="${esc(f.name)}" onclick="openJsonReport(this.getAttribute('data-json'))">${head}${meta}</button>`;
     }
     return `<button type="button" class="report-item" data-md="${esc(f.name)}" onclick="openMarkdownReport(this.getAttribute('data-md'))">${head}${meta}</button>`;
   }).join('');
 }
 globalThis.loadReports = loadReports;
 globalThis.openMarkdownReport = openMarkdownReport;
+globalThis.openJsonReport = openJsonReport;
+globalThis.renderDigestPreview = renderDigestPreview;
 
 /* ---------------- 公共能力（供 p1.js 复用） ---------------- */
 async function post(path, body) {

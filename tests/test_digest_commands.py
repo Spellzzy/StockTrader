@@ -1,5 +1,6 @@
 """digest run / push 成功后落盘；preview 不落盘；落盘失败不让命令失败"""
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -17,6 +18,12 @@ ITEM = {
     "confidence": 70.0,
     "stars": 3,
     "key_factors": ["放量"],
+    "quality": {
+        "below_baseline": False,
+        "mean_accuracy": 0.55,
+        "baseline": 0.333,
+        "factor": 1.0,
+    },
 }
 DIGEST = {
     "date": "2026-11-06 09:30",
@@ -26,6 +33,8 @@ DIGEST = {
     "neutral": [],
     "summary_text": SUMMARY,
     "plain_text": PLAIN,
+    "scan_results": [{"secret": "SCAN_SHOULD_NOT_LEAK"}],
+    "llm_reports": {"sh600519": {"body": "LLM_SHOULD_NOT_LEAK"}},
 }
 
 
@@ -90,6 +99,20 @@ def test_digest_run_writes_summary_under_data_reports(tmp_path, monkeypatch):
     body = md_files[0].read_text(encoding="utf-8")
     assert "可信" in body
     assert PLAIN not in body
+    json_files = list(reports.glob("digest_*.json"))
+    assert len(json_files) == 1
+    assert json_files[0].name == md_files[0].name.replace(".md", ".json")
+    payload = json.loads(json_files[0].read_text(encoding="utf-8"))
+    assert payload["date"] == "2026-11-06 09:30"
+    assert payload["slot"] in ("am", "pm")
+    assert payload["total"] == 1
+    assert payload["bullish"][0]["quality"]["factor"] == 1.0
+    assert payload["bullish"][0]["code"] == "sh600519"
+    raw = json_files[0].read_text(encoding="utf-8")
+    assert "SCAN_SHOULD_NOT_LEAK" not in raw
+    assert "LLM_SHOULD_NOT_LEAK" not in raw
+    assert PLAIN not in raw
+    assert "scan_results" not in payload
 
 
 def test_digest_push_writes_the_same_report(tmp_path, monkeypatch):
@@ -100,10 +123,14 @@ def test_digest_push_writes_the_same_report(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["digest", "push"])
 
     assert result.exit_code == 0, result.output
-    md_files = list((tmp_path / "data" / "reports").glob("digest_*.md"))
+    reports = tmp_path / "data" / "reports"
+    md_files = list(reports.glob("digest_*.md"))
     assert len(md_files) == 1
     assert "可信" in md_files[0].read_text(encoding="utf-8")
     assert PLAIN not in md_files[0].read_text(encoding="utf-8")
+    json_files = list(reports.glob("digest_*.json"))
+    assert len(json_files) == 1
+    assert "SCAN_SHOULD_NOT_LEAK" not in json_files[0].read_text(encoding="utf-8")
 
 
 def test_digest_preview_does_not_write_reports(tmp_path, monkeypatch):
@@ -122,6 +149,7 @@ def test_digest_preview_does_not_write_reports(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert calls == []
     assert list(tmp_path.rglob("digest_*.md")) == []
+    assert list(tmp_path.rglob("digest_*.json")) == []
     assert list(tmp_path.rglob("daily_*.html")) == []
 
 
@@ -165,3 +193,4 @@ def test_failed_generation_does_not_persist(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert calls == []
     assert list(tmp_path.rglob("digest_*.md")) == []
+    assert list(tmp_path.rglob("digest_*.json")) == []

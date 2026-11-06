@@ -14,10 +14,72 @@
 """
 
 import logging
+import math
 from datetime import datetime
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _finite_number(value):
+    """只接受真数字。bool 是 int 的子类，不能当成降权或准确率。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if math.isnan(number):
+        return None
+    return number
+
+
+def _quality_number(quality: dict, key: str):
+    if key not in quality:
+        return None
+    return _finite_number(quality.get(key))
+
+
+def _optional_metric(quality: dict, item: dict, key: str):
+    """quality 里有可用数字就用它；显式 null 才回落到条目本身。"""
+    if key in quality:
+        number = _finite_number(quality.get(key))
+        if number is not None:
+            return number
+        if quality.get(key) is not None:
+            return None
+    if key in item:
+        return _finite_number(item.get(key))
+    return None
+
+
+def _format_count(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{value:.2f}"
+
+
+def _quality_evidence_lines(quality: dict, item: dict) -> list:
+    """有值才追加。弱/强判定、说明和依据不在这里改。"""
+    lines = []
+    accuracy = _quality_number(quality, "mean_accuracy")
+    baseline = _quality_number(quality, "baseline")
+    if accuracy is not None and baseline is not None:
+        lines.append(f"- 准确率: {accuracy:.1%} · 基线 {baseline:.1%}")
+    elif accuracy is not None:
+        lines.append(f"- 准确率: {accuracy:.1%}")
+    elif baseline is not None:
+        lines.append(f"- 基线: {baseline:.1%}")
+
+    factor = _quality_number(quality, "factor")
+    if factor is not None:
+        lines.append(f"- 降权: {factor:.2f}")
+
+    confidence = _optional_metric(quality, item, "confidence")
+    if confidence is not None:
+        lines.append(f"- 置信度: {confidence:.1f}%")
+
+    models_used = _optional_metric(quality, item, "models_used")
+    if models_used is not None:
+        lines.append(f"- 模型数: {_format_count(models_used)}")
+    return lines
 
 
 class SmartDigestService:
@@ -127,6 +189,8 @@ class SmartDigestService:
             quality = combined.get("quality")
             if quality is not None:
                 item["quality"] = quality
+            if combined.get("models_used") is not None:
+                item["models_used"] = combined.get("models_used")
 
             if signal == "看涨":
                 bullish.append(item)
@@ -276,6 +340,7 @@ class SmartDigestService:
             shown = [str(factor).strip() for factor in list(factors)[:3] if str(factor).strip()]
             if shown:
                 lines.append("- 依据: " + "、".join(shown))
+        lines.extend(_quality_evidence_lines(quality, item))
         return "\n".join(lines)
 
     def _append_credibility_card(self, lines: list, item: dict, indent: str) -> None:

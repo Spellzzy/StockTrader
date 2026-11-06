@@ -1925,6 +1925,7 @@ Windows 计划任务 `StockAI_AM`（10:00）和 `StockAI_PM`（14:30）每天各
 | 文件 | 内容 |
 |------|------|
 | `digest_YYYYMMDD_am.md` / `_pm.md` | 智能日报正文（Markdown） |
+| `digest_YYYYMMDD_am.json` / `_pm.json` | 同一次日报的结构化回放（不含整份扫描结果） |
 | `daily_YYYYMMDD_am.html` / `_pm.html` | 可视化报告（图表内嵌，可直接打开） |
 | `report_YYYYMMDD.html` | 手动执行 `stock-ai report` 生成的报告 |
 

@@ -1,6 +1,8 @@
 """定时日报落盘：推送之外必须留一份文件"""
 
 import importlib.util
+import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -46,6 +48,15 @@ def test_persist_writes_markdown_and_html(tmp_path, monkeypatch):
     assert seen["filename"] == f"daily_{stamp}_{slot}.html"
     assert paths["html"].endswith(f"daily_{stamp}_{slot}.html")
     assert Path(paths["html"]).exists()
+
+    js = tmp_path / f"digest_{stamp}_{slot}.json"
+    assert paths["json"] == str(js)
+    assert js.exists()
+    assert not js.read_bytes().startswith(b"\xef\xbb\xbf")
+    payload = json.loads(js.read_text(encoding="utf-8"))
+    assert payload["slot"] == slot
+    assert "今日概览" not in js.read_text(encoding="utf-8")
+    assert "scan_results" not in payload
 
 
 def test_no_html_option(tmp_path):
@@ -150,3 +161,39 @@ def test_same_slot_overwrites_and_am_pm_coexist(tmp_path, monkeypatch):
         "digest_20261106_am.md",
         "digest_20261106_pm.md",
     }
+    am_json = json.loads((tmp_path / "digest_20261106_am.json").read_text(encoding="utf-8"))
+    pm_json = json.loads((tmp_path / "digest_20261106_pm.json").read_text(encoding="utf-8"))
+    assert am_json["slot"] == "am" and pm_json["slot"] == "pm"
+    assert "上午第一版" not in (tmp_path / "digest_20261106_am.json").read_text(encoding="utf-8")
+    assert "下午版" not in (tmp_path / "digest_20261106_am.json").read_text(encoding="utf-8")
+
+
+def test_json_write_failure_keeps_markdown_and_does_not_raise(tmp_path, monkeypatch, caplog):
+    from app.domain.report_persist import persist_daily_reports
+
+    original = Path.write_text
+
+    def wrapped(self, *args, **kwargs):
+        if self.suffix == ".json":
+            raise OSError("disk full")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", wrapped)
+    digest = {
+        "summary_text": "正文还在",
+        "date": "2026-11-06 09:30",
+        "total": 1,
+        "bullish": [{"code": "sh600519", "quality": {"factor": 0.4}}],
+        "bearish": [],
+        "neutral": [],
+        "scan_results": [{"secret": "NOPE"}],
+    }
+
+    with caplog.at_level(logging.WARNING):
+        paths = persist_daily_reports(digest, output_dir=str(tmp_path), with_html=False)
+
+    assert "markdown" in paths
+    assert "json" not in paths
+    assert "正文还在" in Path(paths["markdown"]).read_text(encoding="utf-8")
+    assert list(tmp_path.glob("*.json")) == []
+    assert any("JSON" in record.message for record in caplog.records)
