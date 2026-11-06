@@ -6,6 +6,19 @@ from fastapi.testclient import TestClient
 
 import app.web.api as api_mod
 
+_REAL_REPORT_FILES = api_mod._report_files
+
+CREDIBILITY_MD = """# 智能日报 2026-11-06 09:30 (am)
+
+## 可信度
+- 行情截止: 2026-11-06 09:25:00
+- 置信度: 72.5%（样本 120 日）
+- 数据状态: 行情快照已对齐，样本不足项已降权
+
+### 重点关注
+贵州茅台 看涨
+"""
+
 
 @pytest.fixture
 def client(monkeypatch):
@@ -179,6 +192,107 @@ def test_search(client):
 def test_reports_list(client):
     d = client.get("/api/reports").json()
     assert d["data"]["files"][0]["name"] == "report_20261104.html"
+
+
+def test_reports_list_includes_html_and_markdown(client, monkeypatch, tmp_path):
+    """列表仍同时返回 HTML 账户报告和 Markdown 日报，其它后缀不入列。"""
+    (tmp_path / "daily_20261106_am.html").write_text("<html>账户</html>", encoding="utf-8")
+    (tmp_path / "digest_20261106_am.md").write_text(CREDIBILITY_MD, encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("ignore", encoding="utf-8")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+    monkeypatch.setattr(api_mod, "_report_files", _REAL_REPORT_FILES)
+
+    files = client.get("/api/reports").json()["data"]["files"]
+    by_name = {item["name"]: item for item in files}
+
+    assert set(by_name) == {"digest_20261106_am.md", "daily_20261106_am.html"}
+    assert by_name["digest_20261106_am.md"]["kind"] == "markdown"
+    assert by_name["daily_20261106_am.html"]["kind"] == "html"
+
+
+def test_report_markdown_content_returns_utf8_body(client, monkeypatch, tmp_path):
+    """点击历史 digest_*.md 时，接口原样返回 UTF-8 正文（含可信度卡片）。"""
+    name = "digest_20261106_am.md"
+    path = tmp_path / name
+    path.write_text(CREDIBILITY_MD, encoding="utf-8")
+    assert not path.read_bytes().startswith(b"\xef\xbb\xbf")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+
+    r = client.get(f"/api/reports/{name}/content")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["data"]["name"] == name
+    assert body["data"]["content"] == CREDIBILITY_MD
+    for line in ("## 可信度", "行情截止: 2026-11-06 09:25:00", "置信度: 72.5%"):
+        assert line in body["data"]["content"]
+
+
+def test_report_content_rejects_non_markdown(client, monkeypatch, tmp_path):
+    (tmp_path / "daily_20261106_am.html").write_text("<html></html>", encoding="utf-8")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+
+    r = client.get("/api/reports/daily_20261106_am.html/content")
+
+    assert r.status_code == 400
+    assert r.json() == {"ok": False, "error": "只支持读取 Markdown 报告"}
+
+
+def test_report_content_missing_matches_existing_error(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+
+    r = client.get("/api/reports/digest_missing.md/content")
+
+    assert r.status_code == 404
+    assert r.json() == {"ok": False, "error": "报告不存在"}
+
+
+def test_report_content_illegal_name_matches_existing_error(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+    (tmp_path / "config.yaml").write_text("secret: 1", encoding="utf-8")
+
+    traversal = client.get("/api/reports/..%2F..%2Fconfig.yaml/content")
+    bad_suffix = client.get("/api/reports/notes.txt/content")
+    hidden = client.get("/api/reports/.secret.md/content")
+
+    assert traversal.status_code in (400, 404)
+    assert traversal.json()["ok"] is False
+    assert "secret" not in traversal.text
+    for r in (bad_suffix, hidden):
+        assert r.status_code == 400
+        assert r.json() == {"ok": False, "error": "非法文件名"}
+
+
+def test_open_report_still_serves_html_only(client, monkeypatch, tmp_path):
+    (tmp_path / "daily_20261106_am.html").write_text("<html>账户报告</html>", encoding="utf-8")
+    (tmp_path / "digest_20261106_am.md").write_text(CREDIBILITY_MD, encoding="utf-8")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+
+    html = client.get("/reports/daily_20261106_am.html")
+    assert html.status_code == 200
+    assert "账户报告" in html.text
+
+    md = client.get("/reports/digest_20261106_am.md")
+    assert md.status_code == 400
+    assert md.json() == {"ok": False, "error": "只支持打开 HTML 报告"}
+
+
+def test_reports_panel_opens_markdown_inline_and_html_in_new_tab(client):
+    """报告页：Markdown 走内容接口并在面板内展示原文；HTML 仍新标签打开。"""
+    html = client.get("/").text
+    assert 'id="panel-reports"' in html
+    assert 'id="report-body"' in html
+
+    js = client.get("/static/app.js").text
+    assert "async function loadReports" in js
+    assert "async function openMarkdownReport" in js
+    assert "/api/reports/" in js and "/content" in js
+    assert 'target="_blank"' in js
+    assert 'href="${href}"' in js or "target=\"_blank\"" in js
+    assert "/reports/" in js
+    assert "pre.textContent = String(d.content" in js
+    assert "report-body" in js
 
 
 def test_report_path_traversal_is_blocked(client):
