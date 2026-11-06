@@ -136,22 +136,47 @@ async function loadKline() {
 }
 
 /* ---------------- 报告 ---------------- */
+async function openMarkdownReport(name) {
+  clearError();
+  try {
+    const d = await api('/api/reports/' + encodeURIComponent(name) + '/content');
+    const box = $('report-body');
+    box.classList.remove('hidden');
+    const pre = document.createElement('pre');
+    pre.className = 'report-md';
+    pre.textContent = String(d.content ?? '');
+    box.replaceChildren(pre);
+  } catch (e) {
+    showError(String(e.message || e));
+  }
+}
+
 async function loadReports() {
   const d = await api('/api/reports');
   const files = d.files || [];
+  const body = $('report-body');
   if (!files.length) {
     $('report-list').innerHTML = '<div class="card dim">暂无报告，运行 <code>stock-ai report</code> 或等待每日定时任务生成</div>';
+    if (body) {
+      body.classList.add('hidden');
+      body.replaceChildren();
+    }
     return;
   }
   $('report-list').innerHTML = files.map(f => {
     const kb = (f.size / 1024).toFixed(1);
-    const href = f.kind === 'html' ? `/reports/${encodeURIComponent(f.name)}` : '#';
     const tag = f.kind === 'html' ? '<span class="badge html">HTML</span>' : '<span class="badge">MD</span>';
-    return `<a class="report-item" href="${href}" ${f.kind === 'html' ? 'target="_blank"' : 'onclick="return false"'}>
-      <div class="name">${esc(f.name)}${tag}</div>
-      <div class="meta">${kb} KB · ${esc((f.updated_at || '').replace('T', ' '))}</div></a>`;
+    const head = `<div class="name">${esc(f.name)}${tag}</div>`;
+    const meta = `<div class="meta">${kb} KB · ${esc((f.updated_at || '').replace('T', ' '))}</div>`;
+    if (f.kind === 'html') {
+      const href = `/reports/${encodeURIComponent(f.name)}`;
+      return `<a class="report-item" href="${href}" target="_blank" rel="noopener">${head}${meta}</a>`;
+    }
+    return `<button type="button" class="report-item" data-md="${esc(f.name)}" onclick="openMarkdownReport(this.getAttribute('data-md'))">${head}${meta}</button>`;
   }).join('');
 }
+globalThis.loadReports = loadReports;
+globalThis.openMarkdownReport = openMarkdownReport;
 
 /* ---------------- 公共能力（供 p1.js 复用） ---------------- */
 async function post(path, body) {

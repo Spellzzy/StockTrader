@@ -321,6 +321,19 @@ async def reports() -> dict:
     return ok({"files": await run_in_threadpool(_report_files)})
 
 
+@app.get("/api/reports/{name}/content")
+async def report_content(name: str) -> dict:
+    """读取已落盘的 Markdown 日报正文。HTML 仍由 /reports/{name} 新标签打开。"""
+    path = _safe_report_path(name)
+    if path.suffix != ".md":
+        raise HTTPException(status_code=400, detail="只支持读取 Markdown 报告")
+
+    def read() -> str:
+        return path.read_text(encoding="utf-8")
+
+    return ok({"name": path.name, "content": await run_in_threadpool(read)})
+
+
 @app.get("/reports/{name}", response_class=HTMLResponse)
 async def open_report(name: str):
     """在浏览器里打开已生成的 HTML 报告"""

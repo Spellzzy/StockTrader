@@ -248,6 +248,68 @@ if (cardBox.dataset.code !== "sh600892") {
 }
 console.log("  切换股票联动刷新目标高点行为断言 OK");
 
+/* 报告页：Markdown 在面板内展示原文（含可信度卡片）；HTML 仍新标签打开 */
+const digestName = "digest_20261106_am.md";
+const htmlName = "daily_20261106_am.html";
+const credibility = [
+  "## 可信度",
+  "- 行情截止: 2026-11-06 09:25:00",
+  "- 置信度: 72.5%（样本 120 日）",
+].join("\n");
+const digestBody = `# 智能日报 2026-11-06 09:30 (am)\n\n${credibility}\n\n贵州茅台 看涨\n`;
+const reportFiles = [
+  { name: htmlName, size: 2048, updated_at: "2026-11-06T09:30:00", kind: "html" },
+  { name: digestName, size: digestBody.length, updated_at: "2026-11-06T09:30:00", kind: "markdown" },
+];
+const seenReportUrls = [];
+const origFetch = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  const u = String(url);
+  seenReportUrls.push(u);
+  if (u.includes("/api/reports/") && u.endsWith("/content")) {
+    return { ok: true, json: async () => ({ ok: true, data: { name: digestName, content: digestBody } }) };
+  }
+  if (u.includes("/api/reports")) {
+    return { ok: true, json: async () => ({ ok: true, data: { files: reportFiles } }) };
+  }
+  return origFetch(url);
+};
+const loadReportsFn = globalThis.loadReports;
+const openMarkdownReportFn = globalThis.openMarkdownReport;
+if (typeof loadReportsFn !== "function" || typeof openMarkdownReportFn !== "function") {
+  throw new Error("app.js 未暴露 loadReports / openMarkdownReport");
+}
+await loadReportsFn();
+const listHtml = document.getElementById("report-list").innerHTML;
+const htmlItem = listHtml.match(new RegExp(`<a\\b[^>]*>[\\s\\S]*?${htmlName}[\\s\\S]*?</a>`));
+const mdItem = listHtml.match(new RegExp(`<button\\b[^>]*>[\\s\\S]*?${digestName}[\\s\\S]*?</button>`));
+if (!htmlItem || !mdItem) throw new Error("报告列表未同时渲染 HTML 与 Markdown");
+if (!htmlItem[0].includes('target="_blank"') || !htmlItem[0].includes(`/reports/${htmlName}`)) {
+  throw new Error("HTML 报告应新标签打开 /reports/{name}");
+}
+if (mdItem[0].includes('target="_blank"') || mdItem[0].includes("/reports/")) {
+  throw new Error("Markdown 不应走 HTML 新标签打开");
+}
+if (!mdItem[0].includes("openMarkdownReport")) {
+  throw new Error("Markdown 条目未绑定打开正文的点击");
+}
+await openMarkdownReportFn(digestName);
+const contentUrl = seenReportUrls.find((u) => u.includes("/content"));
+if (!contentUrl || !contentUrl.includes(encodeURIComponent(digestName))) {
+  throw new Error("打开 Markdown 未请求 /api/reports/{name}/content");
+}
+const reportBody = document.getElementById("report-body");
+if (!reportBody || reportBody.classList.contains("hidden")) {
+  throw new Error("Markdown 正文未显示在 #panel-reports 内");
+}
+const shown = (reportBody.children[0] && reportBody.children[0].textContent) || reportBody.textContent || "";
+for (const line of credibility.split("\n")) {
+  if (!shown.includes(line)) throw new Error("可信度卡片原文丢失: " + line);
+}
+if (shown !== digestBody) throw new Error("Markdown 正文被改写，未按原文展示");
+globalThis.fetch = origFetch;
+console.log("  报告页 Markdown 原文 / HTML 新标签行为断言 OK");
+
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);
