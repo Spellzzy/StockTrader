@@ -247,6 +247,36 @@ def test_sidebar_state_is_separate_from_density():
     assert "density-compact .tab" not in css
 
 
+def test_sidebar_column_reaches_bottom_of_shell():
+    """短页侧栏要撑满顶栏以下的整列，脚注沉底；高页仍靠 sticky 与 max-height 内滚。"""
+    css = client.get("/static/style.css").text
+
+    body = re.search(r"body\s*\{([^}]*)\}", css)
+    assert body, "缺少 body 规则"
+    body_decl = body.group(1)
+    assert "display: flex" in body_decl
+    assert "flex-direction: column" in body_decl
+    assert "min-height: 100vh" in body_decl
+
+    shell = re.search(r"\.app-shell\s*\{([^}]*)\}", css)
+    assert shell, "缺少 .app-shell"
+    assert "flex: 1 0 auto" in shell.group(1)
+    assert "align-items: flex-start" in shell.group(1)
+
+    side = re.search(r"\.side-nav\s*\{([^}]*)\}", css)
+    assert side, "缺少 .side-nav"
+    side_decl = side.group(1)
+    assert "align-self: stretch" in side_decl
+    assert "align-self: flex-start" not in side_decl
+    assert "position: sticky" in side_decl
+    assert "max-height: 100vh" in side_decl
+    assert "overflow-y: auto" in side_decl
+
+    note = re.search(r"\.tabs-note\s*\{([^}]*)\}", css)
+    assert note, "缺少 .tabs-note"
+    assert "margin-top: auto" in note.group(1)
+
+
 def test_static_version_changes_with_file(monkeypatch, tmp_path):
     path = tmp_path / "app.js"
     path.write_text("old", encoding="utf-8")
