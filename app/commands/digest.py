@@ -8,6 +8,21 @@ from app.commands import console, Table, Panel, box
 from app.theme import get_up, get_down
 
 
+def _persist_cli_digest(digest: dict) -> None:
+    """生成成功后写入 data/reports。失败只提示，不中断命令。"""
+    try:
+        from app.domain.report_persist import persist_daily_reports
+
+        paths = persist_daily_reports(digest, with_html=True)
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ 日报落盘失败: {exc}[/yellow]")
+        return
+    if not paths or not paths.get("markdown"):
+        console.print("[yellow]⚠️ 日报落盘失败，请检查 data/reports 目录权限[/yellow]")
+        return
+    console.print(f"[dim]日报已写入 {paths['markdown']}[/dim]")
+
+
 def register_digest_commands(digest_app: typer.Typer, cli_module=None):
     """将所有 digest 子命令注册到 digest_app 上
 
@@ -102,6 +117,8 @@ def register_digest_commands(digest_app: typer.Typer, cli_module=None):
             else:
                 console.print("[dim]无需新增自动预警[/dim]")
 
+        _persist_cli_digest(digest)
+
         # 底部提示
         console.print()
         console.print("[dim]⚠️ 以上分析仅供参考，不构成投资建议[/dim]")
@@ -160,6 +177,8 @@ def register_digest_commands(digest_app: typer.Typer, cli_module=None):
                 console.print(f"  [green]✅ {ch_name} — 推送成功[/green]")
             else:
                 console.print(f"  [red]❌ {ch_name} — 推送失败: {err}[/red]")
+
+        _persist_cli_digest(digest)
 
     @digest_app.command("preview")
     def digest_preview(

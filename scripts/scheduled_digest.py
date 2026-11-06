@@ -29,12 +29,14 @@ import os
 import argparse
 import logging
 from datetime import datetime
-from pathlib import Path
 
 # 确保项目根目录在 Python 路径中
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 os.chdir(project_root)
+
+# 路径插入之后再导入，保证直接 python scripts/scheduled_digest.py 也能找到 app
+from app.domain.report_persist import persist_daily_reports
 
 # 修复 Windows 编码
 if sys.platform == "win32":
@@ -64,49 +66,6 @@ def is_trading_day() -> bool:
     from app.domain.calendar import get_calendar
 
     return get_calendar().is_trading_day()
-
-
-DEFAULT_REPORT_DIR = os.path.join(project_root, "data", "reports")
-
-
-def persist_daily_reports(digest: dict, output_dir: str = "", with_html: bool = True) -> dict:
-    """把日报落到磁盘（推送之外还要留一份可回溯的文件）
-
-    产出（带 am/pm 时段后缀，避免上午和下午两次任务互相覆盖）:
-        digest_YYYYMMDD_am.md     Markdown 日报正文
-        daily_YYYYMMDD_am.html    可视化报告（图表内嵌）
-
-    任一块失败只记日志，不影响另一块，也不影响推送。
-    """
-    out = Path(output_dir) if output_dir else Path(DEFAULT_REPORT_DIR)
-    out.mkdir(parents=True, exist_ok=True)
-    now = datetime.now()
-    stamp = now.strftime("%Y%m%d")
-    slot = "am" if now.hour < 12 else "pm"
-    paths = {}
-
-    try:
-        md_path = out / f"digest_{stamp}_{slot}.md"
-        body = digest.get("summary_text") or ""
-        md_path.write_text(
-            f"# 智能日报 {now:%Y-%m-%d %H:%M} ({slot})\n\n{body}\n",
-            encoding="utf-8",
-        )
-        paths["markdown"] = str(md_path)
-    except Exception as e:
-        logging.getLogger("scheduled_digest").warning(f"日报 Markdown 落盘失败: {e}")
-
-    if with_html:
-        try:
-            from app.visualization.report import HTMLReport
-
-            paths["html"] = HTMLReport(output_dir=str(out)).build(
-                filename=f"daily_{stamp}_{slot}.html"
-            )
-        except Exception as e:
-            logging.getLogger("scheduled_digest").warning(f"日报 HTML 落盘失败: {e}")
-
-    return paths
 
 
 def main():
@@ -198,7 +157,9 @@ def main():
         # 落盘（推送之外留一份可回溯的文件）
         if digest:
             paths = persist_daily_reports(
-                digest, output_dir=args.report_dir, with_html=not args.no_html
+                digest,
+                output_dir=args.report_dir or os.path.join(project_root, "data", "reports"),
+                with_html=not args.no_html,
             )
             for kind, path in paths.items():
                 logger.info(f"日报已落盘 [{kind}]: {path}")

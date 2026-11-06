@@ -1928,6 +1928,8 @@ Windows 计划任务 `StockAI_AM`（10:00）和 `StockAI_PM`（14:30）每天各
 | `daily_YYYYMMDD_am.html` / `_pm.html` | 可视化报告（图表内嵌，可直接打开） |
 | `report_YYYYMMDD.html` | 手动执行 `stock-ai report` 生成的报告 |
 
+`stock-ai digest run` 和 `stock-ai digest push` 生成成功后写入同一批 `digest_` / `daily_` 文件（正文用带可信卡的 Markdown；`digest preview` 不落盘）。落盘失败只在终端提示，命令仍然成功。
+
 日志在 `logs/digest_YYYYMMDD.log`，同时会推送到 `config.yaml` 里已启用的渠道。
 周末和 `market.holidays` 里配置的节假日会自动跳过。
 
