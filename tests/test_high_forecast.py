@@ -220,7 +220,9 @@ def test_frontend_wires_forecast(client):
 
     js = client.get("/static/p1.js").text
     for marker in ("/api/forecast/high", "loadHighForecast", "PHASE_LABEL",
-                   "better_than_baseline", "touch_p75"):
+                   "better_than_baseline", "touch_p75",
+                   "syncHighForecast", "el.dataset.code",
+                   "input.dispatchEvent(new Event('change'", "esc(d.code)"):
         assert marker in js, f"p1.js 缺少 {marker}"
 
 

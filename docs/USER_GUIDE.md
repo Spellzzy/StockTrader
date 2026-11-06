@@ -1807,7 +1807,7 @@ Web 侧预测固定 `auto_train=False`，不会偷偷训练模型。
 - 接口：`GET /api/forecast/high?code=sh600519`（纯只读、不落库）
 - CLI：`stock-ai target-high sh600519`（加 `--json` 输出原始结果）
 - 配置：`config.yaml` 的 `forecast.high` 段 —— `lookback` / `levels` / `backtest_days` / `decay_alpha`
-- 切到 AI 预测页自动加载；换代码或点「刷新目标高点」重新计算
+- 切到 AI 预测页自动加载；换代码（含常驻下拉选股 / 通用选择器点选 / 手输失焦）或点「刷新目标高点」重新计算；卡片标题会显示当前对应的股票代码与更新时间，**点「开始预测」时也会兜底校验并自动对齐**
 
 > ⚠️ 这是统计区间与经验概率，不是承诺价格；盘中衰减是经验模型，不构成投资建议。
 

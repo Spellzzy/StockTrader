@@ -110,9 +110,28 @@ globalThis.localStorage = {
 };
 globalThis.setInterval = () => 0;      // 不真的起定时器，避免测试进程不退出
 globalThis.clearInterval = () => {};
-globalThis.fetch = async () => ({
+const forecastMock = {
+  code: "sh600892", name: "大晟文化", phase: "intraday", progress: 0.3,
+  price: 16.39, prev_close: 16.66, day_high: 16.76, as_of: "20261106103000",
+  targets: { p50: 16.80, p75: 16.92, p90: 17.13 },
+  band: { low: 16.80, high: 17.13 },
+  probabilities: { p50: 0.31, p75: 0.15, p90: 0.06 },
+  upside_pct: { p50: 2.5, p75: 3.26, p90: 4.52 },
+  basis: {
+    sample_days: 120, up_quantiles_pct: { p50: 0.99, p75: 2.30, p90: 4.22 },
+    amplitude_p75_pct: 4.02, decay: 0.8, limit_price: 18.33,
+  },
+  quality: {
+    samples: 60, touch_p75: 0.12, coverage: 0.37, mae_pct: 1.97,
+    baseline_mae_pct: 1.30, better_than_baseline: false,
+  },
+  note: "测试用数据",
+};
+globalThis.fetch = async (url) => ({
   ok: true,
-  json: async () => ({ ok: true, data: { version: "0.0.0-smoke" } }),
+  json: async () => String(url).includes("/api/forecast/high")
+    ? { ok: true, data: forecastMock }
+    : { ok: true, data: { version: "0.0.0-smoke" } },
 });
 if (!globalThis.crypto) globalThis.crypto = (await import("node:crypto")).webcrypto;
 if (!globalThis.Event) {
@@ -210,6 +229,24 @@ document.dispatchEvent({
 });
 if (clicked !== 1) throw new Error("表单 Enter 未触发默认提交按钮");
 console.log("  表单回车提交行为断言 OK");
+
+/* 常驻下拉切换股票：目标高点卡片必须跟着刷新
+   （曾出现 change 未派发，卡片一直停在进页面时的默认股票） */
+const picker = document.getElementById("predict-picker");
+const codeInput = document.getElementById("predict-code");
+const cardBox = document.getElementById("high-forecast");
+codeInput.value = "sz002555";
+cardBox.dataset.code = "sz002555";
+picker.value = "sh600892";
+picker.dispatchEvent({ type: "change", target: picker });
+if (codeInput.value !== "sh600892") {
+  throw new Error("常驻下拉没有把代码写入输入框");
+}
+await new Promise((r) => setTimeout(r, 80));
+if (cardBox.dataset.code !== "sh600892") {
+  throw new Error("切换股票后目标高点卡片未刷新");
+}
+console.log("  切换股票联动刷新目标高点行为断言 OK");
 
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {

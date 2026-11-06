@@ -353,7 +353,8 @@ async function loadHighForecast() {
           （${q.better_than_baseline ? '优于基线' : '不优于基线'}）</div>` : '';
     el.innerHTML = `
       <div class="cards">${cards}</div>
-      <div class="dim">${esc(PHASE_LABEL[d.phase] || d.phase)} · 昨收 ${finite(d.prev_close)} ·
+      <div class="dim"><b>${esc(d.code)} ${esc(d.name || '')}</b> ·
+        ${esc(PHASE_LABEL[d.phase] || d.phase)} · 昨收 ${finite(d.prev_close)} ·
         交易进度 ${finite(d.progress * 100, 0)}% · 数据时间 ${esc(String(d.as_of || '').slice(0, 14))}</div>
       <div class="table-wrap" style="margin-top:10px"><table>
         <thead><tr><th>口径</th><th class="num">目标价</th>
@@ -365,10 +366,20 @@ async function loadHighForecast() {
         涨停上限 ${b.limit_price ? finite(b.limit_price) : '不适用'}</div>
       ${qualityLine}
       <div class="quality-warn" style="margin-top:10px">${esc(d.note || '')}</div>`;
-    hint.textContent = '';
+    el.dataset.code = code;   // 记录卡片当前对应哪只股票，供点预测时兜底校验
+    const hhmm = String(d.as_of || '').slice(8, 12);
+    hint.textContent = hhmm.length === 4
+      ? '更新于 ' + hhmm.slice(0, 2) + ':' + hhmm.slice(2) : '';
   } catch (e) {
     el.innerHTML = '<div class="quality-warn">目标高点计算失败：' + esc(String(e.message || e)) + '</div>';
   }
+}
+
+/* 兜底：任何路径漏掉 change 事件时，点「开始预测」也会把卡片对齐到当前代码 */
+function syncHighForecast() {
+  const el = $('#high-forecast');
+  if (!el || el.dataset.code === predictCode()) return;
+  loadHighForecast();
 }
 
 async function loadPredict() {
@@ -378,6 +389,7 @@ async function loadPredict() {
 }
 
 async function runPredict() {
+  syncHighForecast();
   const btn = $('#predict-btn');
   await busy(btn, '预测中…', async () => {
     clearError();
@@ -456,8 +468,17 @@ $('#predict-code').addEventListener('change', () => {
   loadHighForecast();
 });
 $('#predict-picker').addEventListener('change', e => {
-  // ux.js 会向输入框派发 change，模型状态与目标高点在那里统一刷新
-  if (e.target.value) $('#predict-code').value = e.target.value;
+  if (!e.target.value) return;
+  const input = $('#predict-code');
+  input.value = e.target.value;
+  // 常驻下拉不会自动触发输入框的 change，必须显式派发，
+  // 否则模型状态与「今日目标最高价」卡片会停在进页面时的默认股票
+  if (input.dispatchEvent) {
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  } else {
+    checkModelStatus();
+    loadHighForecast();
+  }
 });
 $('#high-refresh').addEventListener('click', loadHighForecast);
 })();
