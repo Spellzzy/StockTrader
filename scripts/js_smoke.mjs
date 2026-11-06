@@ -844,6 +844,387 @@ if (localStorage.getItem("st.tab") !== "market") {
 }
 console.log("  侧栏展开态与组折叠持久化行为断言 OK");
 
+/* 总览「今日日报」：只读最新 digest_*.json，Top 5 复用行快照，失败不冲掉持仓卡片。 */
+if (typeof globalThis.pickLatestDigestFile !== "function") {
+  throw new Error("app.js 未暴露 pickLatestDigestFile");
+}
+if (typeof globalThis.loadOverview !== "function") {
+  throw new Error("app.js 未暴露 loadOverview");
+}
+if (typeof globalThis.openTodayDigestReport !== "function") {
+  throw new Error("app.js 未暴露 openTodayDigestReport");
+}
+const picked = globalThis.pickLatestDigestFile([
+  { name: "notes.json", kind: "json" },
+  { name: "digest_20261106_pm.md", kind: "markdown" },
+  { name: "digest_20261106_pm.json", kind: "json" },
+  { name: "digest_20261106_am.json", kind: "json" },
+]);
+if (!picked || picked.name !== "digest_20261106_pm.json") {
+  throw new Error("应取列表中第一条 kind=json 且名为 digest_*.json 的文件");
+}
+if (globalThis.pickLatestDigestFile([
+  { name: "digest_20261106_am.md", kind: "markdown" },
+  { name: "daily_20261106.json", kind: "json" },
+  { name: "digest_.json", kind: "json" },
+])) {
+  throw new Error("Markdown、非 digest JSON、digest_.json 都不是结构化日报");
+}
+if (globalThis.pickLatestDigestFile([]) || globalThis.pickLatestDigestFile(null)) {
+  throw new Error("空列表应视为无日报");
+}
+const keptOrder = globalThis.pickLatestDigestFile([
+  { name: "digest_20261105_am.json", kind: "json" },
+  { name: "digest_20261106_pm.json", kind: "json" },
+]);
+if (!keptOrder || keptOrder.name !== "digest_20261105_am.json") {
+  throw new Error("选取应相信接口已按文件名倒序，不能自行再排");
+}
+
+const overviewDigestName = "digest_20261106_pm.json";
+const bullishRows = [];
+for (let i = 1; i <= 6; i++) {
+  const row = {
+    code: "sz30000" + i,
+    name: "看涨" + i,
+    signal: "看涨",
+    score: 3.5,
+    confidence: 70,
+    models_used: 4,
+    key_factors: ["动量"],
+  };
+  if (i === 1) {
+    row.quality = {
+      below_baseline: true,
+      mean_accuracy: 0.273,
+      baseline: 0.333,
+      factor: 0.4,
+      note: "样本偏弱",
+    };
+  }
+  bullishRows.push(row);
+}
+const overviewDigest = {
+  date: "2026-11-06 15:00",
+  slot: "pm",
+  total: 9,
+  bullish: bullishRows,
+  bearish: [
+    { code: "sz300011", name: "看跌甲", signal: "看跌", score: -1.2 },
+    { code: "sz300012", name: "看跌乙", signal: "看跌", score: -0.4 },
+  ],
+  neutral: [{ code: "sz300099", name: "中性样本", signal: "震荡", score: 0.1 }],
+};
+const digestFiles = [
+  { name: "notes.json", kind: "json", size: 10, updated_at: "2026-11-06T16:00:00" },
+  { name: "digest_20261106_pm.md", kind: "markdown", size: 20, updated_at: "2026-11-06T15:00:00" },
+  { name: overviewDigestName, kind: "json", size: 30, updated_at: "2026-11-06T15:00:00" },
+  { name: "digest_20261106_am.json", kind: "json", size: 40, updated_at: "2026-11-06T09:30:00" },
+];
+const noDigestFiles = [
+  { name: "daily_20261106_am.html", kind: "html", size: 10, updated_at: "2026-11-06T09:30:00" },
+  { name: "digest_20261106_am.md", kind: "markdown", size: 10, updated_at: "2026-11-06T09:30:00" },
+];
+let reportMode = "ok";
+let overviewProfit = 88.5;
+let overviewHoldings = [{
+  stock_code: "sh600519",
+  stock_name: "茅台",
+  quantity: 100,
+  avg_cost: 10,
+  current_price: 12,
+  market_value: 1200,
+  unrealized_profit: 200,
+  unrealized_profit_rate: 20,
+}];
+const seenOverviewUrls = [];
+const detailPayload = {
+  code: "sz300001",
+  name: "看涨1",
+  generated_at: "2026-11-06T15:00:00",
+  quote: {},
+  kline: [],
+  tech: {},
+  stock: {},
+  holding: null,
+  alert_count: 0,
+  recent_trades: [],
+};
+globalThis.fetch = async (url) => {
+  const u = String(url);
+  seenOverviewUrls.push(u);
+  if (u.includes("/api/predict") || u.includes("/quality") || u.includes("/api/digest")
+      || u.includes("digest-run")) {
+    throw new Error("总览日报不应请求 " + u);
+  }
+  if (u.includes("/api/health")) {
+    return { ok: true, json: async () => ({ ok: true, data: { version: "9.9.9-digest" } }) };
+  }
+  if (u.includes("/api/overview")) {
+    return {
+      ok: true,
+      json: async () => ({
+        ok: true,
+        data: {
+          generated_at: "2026-11-06T15:00:00",
+          portfolio: {
+            total_profit: overviewProfit,
+            total_unrealized_profit: 1,
+            total_market_value: 10,
+            total_cost: 9,
+            holdings: overviewHoldings,
+          },
+          analysis: { total_trades: 3, win_rate: 40 },
+          alerts_active: 1,
+          models: 2,
+          reports: 4,
+          warnings: ["总览仍可用"],
+        },
+      }),
+    };
+  }
+  if (u.includes("/api/stock/detail")) {
+    return { ok: true, json: async () => ({ ok: true, data: detailPayload }) };
+  }
+  if (u.includes("/api/reports/") && u.endsWith("/content")) {
+    if (reportMode === "content-fail") {
+      return { ok: false, status: 400, json: async () => ({ ok: false, error: "JSON 无法解析" }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, data: overviewDigest }) };
+  }
+  if (u.includes("/api/reports")) {
+    if (reportMode === "list-fail") {
+      return { ok: false, status: 500, json: async () => ({ ok: false, error: "读取失败" }) };
+    }
+    const files = reportMode === "none" ? noDigestFiles : digestFiles;
+    return { ok: true, json: async () => ({ ok: true, data: { files } }) };
+  }
+  return { ok: true, json: async () => ({ ok: true, data: {} }) };
+};
+
+const holdingsTable = document.getElementById("holdings");
+const holdingsBody = makeElement("holdings-tbody");
+holdingsTable.querySelector = (sel) => (
+  sel === "tbody" ? holdingsBody : makeElement("holdings::" + sel)
+);
+const digestOpenBtn = document.getElementById("today-digest-open");
+if (!digestOpenBtn) throw new Error("总览缺少「查看完整日报」按钮");
+
+function assertNoDigestSideChannel(label) {
+  for (const u of seenOverviewUrls) {
+    if (u.includes("/api/predict") || u.includes("/quality") || u.includes("/api/digest")
+        || u.includes("digest-run")) {
+      throw new Error(label + " 出现了不该有的请求 " + u);
+    }
+  }
+}
+function assertDigestActionClosed(label) {
+  const closed = digestOpenBtn.disabled || digestOpenBtn.hidden
+    || digestOpenBtn.classList.contains("hidden");
+  if (!closed) throw new Error(label + "：「查看完整日报」应禁用或隐藏");
+}
+
+await globalThis.loadOverview();
+const digestCard = document.getElementById("today-digest").innerHTML;
+const digestMeta = document.getElementById("today-digest-meta").textContent;
+if (digestMeta !== "2026-11-06 15:00 · pm · 9 只 · 震荡 1") {
+  throw new Error("总览日报头部应是日期、时段、总数和震荡条数，实际 " + digestMeta);
+}
+if (!document.getElementById("cards").innerHTML.includes("88.50")) {
+  throw new Error("加载日报时账户卡片没有渲染");
+}
+if (!holdingsBody.innerHTML.includes("sh600519")) {
+  throw new Error("加载日报时持仓没有渲染");
+}
+if (!document.getElementById("warnings").innerHTML.includes("总览仍可用")) {
+  throw new Error("日报区块冲掉了总览警告");
+}
+for (const piece of ["看涨 · 6", "看跌 · 2", "看涨1", "看跌甲", "弱于基线", "27.3%", "33.3%", "0.40", "样本偏弱"]) {
+  if (!digestCard.includes(piece)) throw new Error("总览日报缺少 " + piece);
+}
+if (digestCard.includes("看涨6") || digestCard.includes("sz300006")
+    || digestCard.includes("中性样本") || digestCard.includes("sz300099")) {
+  throw new Error("总览只应展示看涨/看跌 Top 5，震荡不应展开");
+}
+if ((digestCard.match(/digest-evidence-row/g) || []).length !== 7) {
+  throw new Error("总览行数应为看涨 5 + 看跌 2");
+}
+const overviewSnaps = snapshotsFromMarkup(digestCard);
+if (overviewSnaps.length !== 7) throw new Error("总览行未绑定快照");
+if (overviewSnaps[0].code !== "sz300001" || !overviewSnaps[0].quality
+    || overviewSnaps[0].quality.factor !== 0.4 || overviewSnaps[0].quality.mean_accuracy !== 0.273) {
+  throw new Error("总览首行快照的 quality 与该行不一致");
+}
+if (overviewSnaps[1].quality !== undefined) throw new Error("无质量的看涨行不应编造 quality");
+if (overviewSnaps[5].code !== "sz300011" || overviewSnaps[5].quality !== undefined) {
+  throw new Error("看跌行应沿用 digestRows 的快照，且不编造 quality");
+}
+if (digestOpenBtn.disabled || digestOpenBtn.hidden || digestOpenBtn.dataset.name !== overviewDigestName) {
+  throw new Error("有日报时按钮应可点并绑定该 JSON 文件名");
+}
+const overviewContentUrl = "/api/reports/" + encodeURIComponent(overviewDigestName) + "/content";
+if (!seenOverviewUrls.some((u) => u.includes(overviewContentUrl))) {
+  throw new Error("总览未请求最新 digest JSON 的 content");
+}
+assertNoDigestSideChannel("加载总览日报");
+
+const overviewEvidence = document.getElementById("detail-evidence");
+const overviewBullRow = evidenceRow(overviewSnaps[0]);
+document.dispatchEvent({ type: "click", target: overviewBullRow, preventDefault() {}, stopPropagation() {} });
+await new Promise((r) => setTimeout(r, 40));
+if (!document.getElementById("stock-detail") || document.getElementById("stock-detail").classList.contains("hidden")) {
+  throw new Error("点击总览日报行后抽屉未打开");
+}
+for (const piece of ["可信证据", "27.3%", "0.40", "样本偏弱", "弱于基线"]) {
+  if (!overviewEvidence.innerHTML.includes(piece)) throw new Error("抽屉证据与总览行不一致: " + piece);
+}
+if (seenOverviewUrls.some((u) => u.includes("/api/predict") || u.includes("/quality"))) {
+  throw new Error("点开总览日报证据不应请求预测或质量接口");
+}
+ST.closeStockDetail();
+let overviewKeyPrevented = 0;
+document.dispatchEvent({
+  type: "keydown",
+  key: "Enter",
+  target: overviewBullRow,
+  preventDefault() { overviewKeyPrevented += 1; },
+});
+if (!overviewEvidence.innerHTML.includes("27.3%") || overviewKeyPrevented !== 1) {
+  throw new Error("回车未带该行快照打开可信证据");
+}
+ST.closeStockDetail();
+document.dispatchEvent({
+  type: "keydown",
+  key: " ",
+  target: overviewBullRow,
+  preventDefault() { overviewKeyPrevented += 1; },
+});
+if (!overviewEvidence.innerHTML.includes("0.40") || overviewKeyPrevented !== 2) {
+  throw new Error("空格未带该行快照打开可信证据");
+}
+ST.closeStockDetail();
+
+const contentFetchesBeforeRefresh = seenOverviewUrls.filter((u) => u.includes(overviewContentUrl)).length;
+await window.refresh();
+const contentFetchesAfterRefresh = seenOverviewUrls.filter((u) => u.includes(overviewContentUrl)).length;
+if (contentFetchesAfterRefresh <= contentFetchesBeforeRefresh) {
+  throw new Error("总览刷新（含自动刷新）应重新拉取最新日报");
+}
+if (document.getElementById("today-digest-meta").textContent !== digestMeta) {
+  throw new Error("刷新后日报头部丢失");
+}
+
+overviewHoldings = [];
+await globalThis.loadOverview();
+if (!holdingsBody.innerHTML.includes("当前无持仓")) {
+  throw new Error("空持仓没有走原有空态");
+}
+if (!document.getElementById("today-digest").innerHTML.includes("看涨1")) {
+  throw new Error("没有持仓时仍应展示今日日报");
+}
+overviewHoldings = [{
+  stock_code: "sh600519",
+  stock_name: "茅台",
+  quantity: 100,
+  avg_cost: 10,
+  current_price: 12,
+  market_value: 1200,
+  unrealized_profit: 200,
+  unrealized_profit_rate: 20,
+}];
+
+const overviewPanel = document.getElementById("panel-overview");
+const reportsPanel = document.getElementById("panel-reports");
+await globalThis.openTodayDigestReport("notes.json");
+if (overviewPanel.classList.contains("hidden") || localStorage.getItem("st.tab") !== "market") {
+  throw new Error("非 digest JSON 不应切到报告页");
+}
+digestOpenBtn.disabled = true;
+digestOpenBtn.dispatchEvent({ type: "click" });
+await new Promise((r) => setTimeout(r, 40));
+if (overviewPanel.classList.contains("hidden")) {
+  throw new Error("按钮禁用时不应跳转");
+}
+digestOpenBtn.disabled = false;
+digestOpenBtn.dispatchEvent({ type: "click" });
+await new Promise((r) => setTimeout(r, 80));
+if (!overviewPanel.classList.contains("hidden") || reportsPanel.classList.contains("hidden")) {
+  throw new Error("查看完整日报应离开总览并打开报告页");
+}
+if (localStorage.getItem("st.tab") !== "reports") {
+  throw new Error("查看完整日报未记住报告页");
+}
+const reportListHtml = document.getElementById("report-list").innerHTML;
+if (!reportListHtml.includes(overviewDigestName) || !reportListHtml.includes("openJsonReport")) {
+  throw new Error("跳转后报告列表没有按原逻辑渲染该 JSON");
+}
+const fullReport = document.getElementById("report-body");
+const fullPreview = (fullReport.children[0] && fullReport.children[0].innerHTML) || fullReport.innerHTML;
+if (fullReport.classList.contains("hidden")) {
+  throw new Error("完整日报预览没有展开");
+}
+for (const piece of [overviewDigestName, "只读预览", "2026-11-06 15:00", "看涨6", "中性样本", "看跌甲"]) {
+  if (!fullPreview.includes(piece)) throw new Error("完整日报预览缺少 " + piece);
+}
+if (document.getElementById("today-digest").innerHTML.includes("看涨6")) {
+  throw new Error("打开完整日报不应把总览放宽到 5 行以上");
+}
+assertNoDigestSideChannel("查看完整日报");
+
+const contentHits = () => seenOverviewUrls.filter((u) => u.endsWith("/content")).length;
+const contentBeforeNone = contentHits();
+reportMode = "none";
+overviewProfit = 77.25;
+await globalThis.loadOverview();
+if (!document.getElementById("today-digest").innerHTML.includes("暂无结构化日报")) {
+  throw new Error("没有 digest JSON 时应显示空态文案");
+}
+if (!document.getElementById("cards").innerHTML.includes("77.25")) {
+  throw new Error("无日报时空态冲掉了账户卡片");
+}
+if (!holdingsBody.innerHTML.includes("sh600519")) {
+  throw new Error("无日报时持仓没有保持渲染");
+}
+assertDigestActionClosed("无日报");
+if (contentHits() !== contentBeforeNone) {
+  throw new Error("无日报不应请求 JSON 正文");
+}
+
+reportMode = "content-fail";
+overviewProfit = 66.5;
+await globalThis.loadOverview();
+if (!document.getElementById("today-digest").innerHTML.includes("日报读取失败")) {
+  throw new Error("日报内容读取失败时应只在本区块显示失败文案");
+}
+if (!document.getElementById("cards").innerHTML.includes("66.50")) {
+  throw new Error("日报读取失败冲掉了账户卡片");
+}
+if (!document.getElementById("warnings").innerHTML.includes("总览仍可用")) {
+  throw new Error("日报读取失败冲掉了总览警告");
+}
+assertDigestActionClosed("读取失败");
+
+const contentBeforeListFail = contentHits();
+reportMode = "list-fail";
+overviewProfit = 55.5;
+await globalThis.loadOverview();
+if (!document.getElementById("today-digest").innerHTML.includes("日报读取失败")) {
+  throw new Error("报告列表读取失败时应显示日报失败文案");
+}
+if (!document.getElementById("cards").innerHTML.includes("55.50")) {
+  throw new Error("报告列表失败冲掉了账户卡片");
+}
+if (!holdingsBody.innerHTML.includes("sh600519")) {
+  throw new Error("报告列表失败冲掉了持仓");
+}
+assertDigestActionClosed("列表失败");
+if (contentHits() !== contentBeforeListFail) {
+  throw new Error("报告列表失败后不应再读 JSON 正文");
+}
+assertNoDigestSideChannel("日报失败路径");
+globalThis.fetch = origFetch;
+console.log("  总览今日日报选取、Top 5 证据行与完整日报跳转断言 OK");
+
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {
   console.error(`发现 ${asyncFailures} 个未处理的异步错误`);

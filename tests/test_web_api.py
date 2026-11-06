@@ -352,6 +352,44 @@ def test_open_report_rejects_json_file(client, monkeypatch, tmp_path):
     assert r.json() == {"ok": False, "error": "只支持打开 HTML 报告"}
 
 
+def test_overview_today_digest_summary_is_wired(client):
+    """总览挂最新 digest JSON：空态、Top 5 行、完整日报跳转都复用现有报告接口。"""
+    html = client.get("/").text
+    overview = html.split('id="panel-market"', 1)[0]
+    for marker in (
+        "今日日报",
+        'id="today-digest"',
+        'id="today-digest-meta"',
+        'id="today-digest-open"',
+        "查看完整日报",
+        'id="cards"',
+        'id="holdings"',
+        'id="meta-cards"',
+    ):
+        assert marker in overview, f"总览面板缺少 {marker}"
+
+    js = client.get("/static/app.js").text
+    for marker in (
+        "function pickLatestDigestFile",
+        "function loadTodayDigest",
+        "async function openTodayDigestReport",
+        "loadTodayDigest()",
+        "digestRows(",
+        ".slice(0, 5)",
+        "^digest_.+\\.json$",
+        "暂无结构化日报",
+        "日报读取失败",
+        "openJsonReport",
+        '/api/reports/',
+        '.tab[data-tab="reports"]',
+        "st.tab",
+    ):
+        assert marker in js, f"app.js 缺少 {marker}"
+    assert 'kind === "json"' in js or "kind === 'json'" in js
+    assert "/api/digest" not in js
+    assert "digest-run" not in js
+
+
 def test_reports_page_previews_json_readonly(client):
     """JSON 打开后是结构化预览，不是可编辑编辑器；Markdown 原文路径仍在。"""
     html = client.get("/").text

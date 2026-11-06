@@ -75,16 +75,20 @@ async function loadOverview() {
     ? '⚠️ ' + warnings.map(esc).join(' · ') : '';
 
   const holdings = p.holdings || [];
-  const tbody = $('holdings').querySelector('tbody');
-  if (!holdings.length) { emptyRow($('holdings'), 8, '当前无持仓'); return; }
-  tbody.innerHTML = holdings.map(h => {
-    const pnl = h.unrealized_profit || 0, rate = h.unrealized_profit_rate || 0;
-    return `<tr><td>${esc(h.stock_code)}</td><td>${esc(h.stock_name || '')}</td>
-      <td class="num">${fmt(h.quantity, 0)}</td><td class="num">${fmt(h.avg_cost)}</td>
-      <td class="num">${fmt(h.current_price)}</td><td class="num">${fmt(h.market_value)}</td>
-      <td class="num ${cls(pnl)}">${signed(pnl)}</td>
-      <td class="num ${cls(rate)}">${signed(rate)}%</td></tr>`;
-  }).join('');
+  if (!holdings.length) {
+    emptyRow($('holdings'), 8, '当前无持仓');
+  } else {
+    const tbody = $('holdings').querySelector('tbody');
+    tbody.innerHTML = holdings.map(h => {
+      const pnl = h.unrealized_profit || 0, rate = h.unrealized_profit_rate || 0;
+      return `<tr><td>${esc(h.stock_code)}</td><td>${esc(h.stock_name || '')}</td>
+        <td class="num">${fmt(h.quantity, 0)}</td><td class="num">${fmt(h.avg_cost)}</td>
+        <td class="num">${fmt(h.current_price)}</td><td class="num">${fmt(h.market_value)}</td>
+        <td class="num ${cls(pnl)}">${signed(pnl)}</td>
+        <td class="num ${cls(rate)}">${signed(rate)}%</td></tr>`;
+    }).join('');
+  }
+  await loadTodayDigest();
 }
 
 /* ---------------- 行情 ---------------- */
@@ -320,6 +324,76 @@ function digestRows(items) {
     </tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+const DIGEST_JSON_NAME = /^digest_.+\.json$/;
+
+function pickLatestDigestFile(files) {
+  const list = Array.isArray(files) ? files : [];
+  for (let i = 0; i < list.length; i++) {
+    const file = list[i];
+    if (!file || file.kind !== 'json') continue;
+    if (DIGEST_JSON_NAME.test(String(file.name || ''))) return file;
+  }
+  return null;
+}
+
+function setTodayDigestOpen(name) {
+  const btn = $('today-digest-open');
+  if (!btn) return;
+  if (name) {
+    btn.disabled = false;
+    btn.hidden = false;
+    if (btn.classList) btn.classList.remove('hidden');
+    if (btn.dataset) btn.dataset.name = name;
+    return;
+  }
+  btn.disabled = true;
+  if (btn.dataset) btn.dataset.name = '';
+}
+
+function showTodayDigestEmpty(text) {
+  const box = $('today-digest');
+  if (box) box.innerHTML = `<div class="dim">${esc(text)}</div>`;
+  const meta = $('today-digest-meta');
+  if (meta) meta.textContent = '';
+  setTodayDigestOpen('');
+}
+
+function renderTodayDigest(name, data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    showTodayDigestEmpty('日报读取失败');
+    return;
+  }
+  const bullish = Array.isArray(data.bullish) ? data.bullish : [];
+  const bearish = Array.isArray(data.bearish) ? data.bearish : [];
+  const neutral = Array.isArray(data.neutral) ? data.neutral : [];
+  const total = data.total === undefined || data.total === null || data.total === '' ? '-' : data.total;
+  const meta = $('today-digest-meta');
+  if (meta) {
+    meta.textContent = `${data.date || '-'} · ${data.slot || '-'} · ${total} 只 · 震荡 ${neutral.length}`;
+  }
+  const box = $('today-digest');
+  if (box) {
+    box.innerHTML = `<h3>看涨 · ${bullish.length}</h3>${digestRows(bullish.slice(0, 5))}
+      <h3>看跌 · ${bearish.length}</h3>${digestRows(bearish.slice(0, 5))}`;
+  }
+  setTodayDigestOpen(name);
+}
+
+async function loadTodayDigest() {
+  try {
+    const listed = await api('/api/reports');
+    const file = pickLatestDigestFile(listed && listed.files);
+    if (!file) {
+      showTodayDigestEmpty('暂无结构化日报');
+      return;
+    }
+    const data = await api('/api/reports/' + encodeURIComponent(file.name) + '/content');
+    renderTodayDigest(file.name, data);
+  } catch (e) {
+    showTodayDigestEmpty('日报读取失败');
+  }
+}
+
 function renderDigestPreview(name, data) {
   const box = document.createElement('div');
   box.className = 'report-json';
@@ -393,6 +467,10 @@ globalThis.loadReports = loadReports;
 globalThis.openMarkdownReport = openMarkdownReport;
 globalThis.openJsonReport = openJsonReport;
 globalThis.renderDigestPreview = renderDigestPreview;
+globalThis.pickLatestDigestFile = pickLatestDigestFile;
+globalThis.loadOverview = loadOverview;
+globalThis.loadTodayDigest = loadTodayDigest;
+globalThis.openTodayDigestReport = openTodayDigestReport;
 
 /* ---------------- 公共能力（供 p1.js 复用） ---------------- */
 async function post(path, body) {
@@ -467,19 +545,56 @@ async function refresh() {
 
 /* 侧栏项仍是 .tab + data-tab。命令面板、空状态按钮和 #stock= 深链
    都通过点击这些按钮进入同一条切页路径。 */
+let suppressTabRefresh = false;
+
+function showTab(name) {
+  const leaving = activeTab;
+  activeTab = name;
+  document.querySelectorAll('.tab').forEach(btn => {
+    const on = !!(btn.dataset && btn.dataset.tab === name);
+    btn.classList.toggle('active', on);
+    if (on) {
+      if (btn.setAttribute) btn.setAttribute('aria-current', 'page');
+    } else if (btn.removeAttribute) {
+      btn.removeAttribute('aria-current');
+    }
+  });
+  const panels = document.querySelectorAll('.panel');
+  if (panels && panels.length) {
+    panels.forEach(p => { if (p.classList) p.classList.add('hidden'); });
+  } else if (leaving && leaving !== name) {
+    const prev = $('panel-' + leaving);
+    if (prev && prev.classList) prev.classList.add('hidden');
+  }
+  const panel = $('panel-' + name);
+  if (panel && panel.classList) panel.classList.remove('hidden');
+}
+
+async function openTodayDigestReport(name) {
+  const target = String(name || '');
+  if (!DIGEST_JSON_NAME.test(target)) return;
+  showTab('reports');
+  try { localStorage.setItem('st.tab', 'reports'); } catch (e) { /* 存不了偏好时仍切页 */ }
+  const tab = document.querySelector('.tab[data-tab="reports"]');
+  if (tab && typeof tab.click === 'function') {
+    suppressTabRefresh = true;
+    try { tab.click(); } finally { suppressTabRefresh = false; }
+  }
+  await refresh();
+  await openJsonReport(target);
+}
+
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => {
-      b.classList.remove('active');
-      if (b.removeAttribute) b.removeAttribute('aria-current');
-    });
-    btn.classList.add('active');
-    if (btn.setAttribute) btn.setAttribute('aria-current', 'page');
-    activeTab = btn.dataset.tab;
-    document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
-    $('panel-' + activeTab).classList.remove('hidden');
+    showTab(btn.dataset.tab);
+    if (suppressTabRefresh) return;
     refresh();
   });
+});
+$('today-digest-open').addEventListener('click', () => {
+  const btn = $('today-digest-open');
+  if (!btn || btn.disabled) return;
+  openTodayDigestReport((btn.dataset && btn.dataset.name) || '');
 });
 $('refresh').addEventListener('click', () => {
   if (window.ST && window.ST.forceRefresh) window.ST.forceRefresh();
