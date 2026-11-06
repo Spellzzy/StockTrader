@@ -232,6 +232,59 @@ class SmartDigestService:
             return note.strip()
         return "弱于基线，勿当强信号"
 
+    @staticmethod
+    def _credibility_card(item: dict) -> Optional[str]:
+        """看涨/看跌可信摘要。无 quality 不渲染。
+
+        与 ``_quality_warning`` 使用同一套 quality 读取：只认 dict，
+        ``below_baseline`` 为真视为弱于基线。弱卡片标题带 ⚠️；
+        强卡片只用「优于基线 / 质量正常」，不附加恐吓措辞。
+        """
+        quality = item.get("quality")
+        if not isinstance(quality, dict):
+            return None
+
+        below = bool(quality.get("below_baseline"))
+        note = quality.get("note")
+        if isinstance(note, str) and note.strip():
+            note_text = note.strip()
+        elif below:
+            note_text = "弱于基线，勿当强信号"
+        else:
+            note_text = "质量正常"
+
+        score = item.get("score", 0) or 0
+        stars = item.get("stars") or 0
+        try:
+            stars = int(stars)
+        except (TypeError, ValueError):
+            stars = 0
+        if stars < 0:
+            stars = 0
+
+        lines = [
+            "⚠️ 📎 可信摘要" if below else "📎 可信摘要",
+            (
+                f"- 信号: {item.get('signal', '')} · 评分 {float(score):+.1f} · "
+                f"{'⭐' * stars}"
+            ),
+            f"- 质量: {'弱于基线' if below else '优于基线'}",
+            f"- 说明: {note_text}",
+        ]
+        factors = item.get("key_factors") or []
+        if isinstance(factors, (list, tuple)):
+            shown = [str(factor).strip() for factor in list(factors)[:3] if str(factor).strip()]
+            if shown:
+                lines.append("- 依据: " + "、".join(shown))
+        return "\n".join(lines)
+
+    def _append_credibility_card(self, lines: list, item: dict, indent: str) -> None:
+        card = self._credibility_card(item)
+        if not card:
+            return
+        for line in card.splitlines():
+            lines.append(f"{indent}{line}")
+
     def _build_markdown_digest(self, digest: dict, code_names: dict) -> str:
         """组装 Markdown 格式的智能日报"""
         lines = []
@@ -256,9 +309,7 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"   关键: {' | '.join(item['key_factors'][:3])}")
-                warn = self._quality_warning(item)
-                if warn:
-                    lines.append(f"   ⚠️ 可信度: {warn}")
+                self._append_credibility_card(lines, item, "   ")
 
                 # LLM 分析追加
                 report = llm_reports.get(item["code"])
@@ -296,9 +347,7 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"   风险: {' | '.join(item['key_factors'][:3])}")
-                warn = self._quality_warning(item)
-                if warn:
-                    lines.append(f"   ⚠️ 可信度: {warn}")
+                self._append_credibility_card(lines, item, "   ")
 
                 report = llm_reports.get(item["code"])
                 if report:
@@ -371,9 +420,7 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"     关键: {' | '.join(item['key_factors'][:3])}")
-                warn = self._quality_warning(item)
-                if warn:
-                    lines.append(f"     [yellow]⚠️ 可信度: {warn}[/yellow]")
+                self._append_credibility_card(lines, item, "     ")
 
                 report = llm_reports.get(item["code"])
                 if report:
@@ -406,9 +453,7 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"     风险: {' | '.join(item['key_factors'][:3])}")
-                warn = self._quality_warning(item)
-                if warn:
-                    lines.append(f"     [yellow]⚠️ 可信度: {warn}[/yellow]")
+                self._append_credibility_card(lines, item, "     ")
 
                 report = llm_reports.get(item["code"])
                 if report:
