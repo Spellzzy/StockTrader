@@ -1,6 +1,7 @@
 """个股详情：后端聚合接口 + 前端子页面接线"""
 
 from contextlib import contextmanager
+from datetime import datetime
 
 import pandas as pd
 import pytest
@@ -69,7 +70,7 @@ def client(monkeypatch):
     )
     monkeypatch.setattr(
         "app.services.market_service.MarketService.get_kline_df",
-        lambda self, code, **kw: _kline_df(),
+        lambda self, code, *args, **kw: _kline_df(),
     )
     monkeypatch.setattr(
         "app.services.market_service.MarketService.get_profile",
@@ -220,13 +221,107 @@ def test_frontend_detail_panes_are_wired(client):
     for marker in ("detail-tab", "switchPane", "/api/stock/fund",
                    "/api/stock/news", "flow-bar", "news-item", "paneLoaded",
                    "candleChart", "maSeries", "kline-period", "kline-adjust",
-                   "orderBook", "innerOuter", "total_market_cap"):
+                   "orderBook", "innerOuter", "total_market_cap",
+                   "量比", "放量", "平量", "缩量", "—", "vr-card",
+                   "turnover_rate", "最新量 / 均量"):
         assert marker in detail_js, f"detail.js 缺少 {marker}"
 
     css = client.get("/static/style.css").text
     for cls in (".detail-tabs", ".detail-tab", ".flow-bar", ".news-item",
-                ".candle-svg", ".book-bar", ".io-bar", ".kline-tools"):
+                ".candle-svg", ".book-bar", ".io-bar", ".kline-tools",
+                ".vr-card", ".warn", ".turnover-card"):
         assert cls in css, f"style.css 缺少 {cls}"
+
+
+def _freeze_at(monkeypatch, hour, minute):
+    frozen = datetime(2026, 11, 6, hour, minute, 0)
+
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(api_mod, "datetime", _Clock)
+
+
+def test_detail_volume_ratio_uses_quote_field(client, monkeypatch):
+    """有源字段时直接采用，不拿 5 日回退或 60 日均量倍数顶替。"""
+    _freeze_at(monkeypatch, 10, 30)
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_quote",
+        lambda self, *codes: {"sh600519": {
+            "price": 10, "volume": 50, "volume_ratio": 2.5, "vol_ratio": 9.9,
+            "turnover_rate": 1.2,
+        }},
+    )
+    d = client.get("/api/stock/detail?code=600519").json()["data"]
+    assert d.get("volume_ratio") == pytest.approx(2.5)
+    assert d["quote"]["volume_ratio"] == 2.5
+    assert d["quote"]["turnover_rate"] == 1.2
+
+
+def test_detail_volume_ratio_uses_vol_ratio_when_primary_missing(client, monkeypatch):
+    _freeze_at(monkeypatch, 10, 30)
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_quote",
+        lambda self, *codes: {"sh600519": {
+            "price": 10, "volume": 50, "volume_ratio": 0, "vol_ratio": 1.25,
+        }},
+    )
+    d = client.get("/api/stock/detail?code=600519").json()["data"]
+    assert d.get("volume_ratio") == pytest.approx(1.25)
+
+
+def test_detail_volume_ratio_falls_back_like_watch(client, monkeypatch):
+    """无源字段：排除当天的最多 5 日均量 × 已过分钟/240。"""
+    _freeze_at(monkeypatch, 10, 30)
+    calls = []
+
+    def kline(self, code, period="day", count=60, adjust="qfq"):
+        calls.append((period, count))
+        if count == 6:
+            return pd.DataFrame({"volume": [100, 100, 100, 100, 100, 9999]})
+        # 60 日序列的「最新/均量」约为 1.x，不能被当成量比
+        return _kline_df()
+
+    monkeypatch.setattr("app.services.market_service.MarketService.get_kline_df", kline)
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_quote",
+        lambda self, *codes: {"sh600519": {"price": 10, "volume": 50, "turnover_rate": 0.8}},
+    )
+    d = client.get("/api/stock/detail?code=600519").json()["data"]
+
+    assert ("day", 6) in calls
+    assert d.get("volume_ratio") == pytest.approx(2.0)
+    assert "volume_ratio" not in d["quote"]
+    vols = _kline_df()["volume"].tolist()
+    sixty = vols[-1] / (sum(vols) / len(vols))
+    assert d["volume_ratio"] != pytest.approx(sixty)
+
+
+def test_detail_volume_ratio_missing_is_null(client, monkeypatch):
+    """开盘前、或 K 线也没有时，不把量比写成 0。"""
+    _freeze_at(monkeypatch, 9, 0)
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_quote",
+        lambda self, *codes: {"sh600519": {"price": 10, "volume": 50, "turnover_rate": 0.3}},
+    )
+    before_open = client.get("/api/stock/detail?code=600519").json()["data"]
+    assert before_open.get("volume_ratio", "MISSING") is None
+
+    _freeze_at(monkeypatch, 10, 30)
+
+    def boom(self, code, period="day", count=60, adjust="qfq"):
+        raise RuntimeError("K线不可用")
+
+    monkeypatch.setattr("app.services.market_service.MarketService.get_kline_df", boom)
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_quote",
+        lambda self, *codes: {"sh600519": {"price": 10, "volume": 50}},
+    )
+    no_kline = client.get("/api/stock/detail?code=600519").json()["data"]
+    assert no_kline.get("volume_ratio", "MISSING") is None
+    assert no_kline["kline"] == []
 
 
 def test_frontend_detail_page_is_wired(client):

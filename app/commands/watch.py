@@ -9,6 +9,7 @@
 
 from datetime import datetime
 from app.commands import console, Table, Panel, box
+from app.domain.volume_ratio import prior_avg_volume, resolve_volume_ratio
 from app.theme import get_up, get_down, get_up_bg, get_down_bg
 
 
@@ -237,11 +238,10 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                     try:
                         kdf = market.get_kline_df(code, "day", 6)
                         round_api_calls += 1
-                        if not kdf.empty and len(kdf) >= 2:
-                            # 排除最后一行（当天）,取前5日均量
-                            hist = kdf.iloc[:-1]
-                            if len(hist) > 0:
-                                _vol_avg5[code] = hist["volume"].mean()
+                        # 排除最后一行（当天），最多 5 日均量。行数不够则不记缓存，下轮再取。
+                        avg5 = prior_avg_volume(kdf)
+                        if avg5 is not None:
+                            _vol_avg5[code] = avg5
                     except Exception:
                         _vol_avg5[code] = 0  # 标记已尝试，避免重复请求
 
@@ -313,36 +313,20 @@ def do_watch(codes_str: str, interval: int, alert_only: bool, sort_by: str = "ch
                         _pre_close_cache[code] = pre_close
                         _amp_cache[code] = ((high - low) / pre_close * 100) if pre_close else 0
 
-                    # ====== 预计算量比缓存 ======
+                    # ====== 预计算量比缓存（与个股详情同一套 resolve_volume_ratio）======
                     _vr_cache = {}
                     now_dt = datetime.now()
-                    TOTAL_MINUTES = 240
-                    morning_start = now_dt.replace(hour=9, minute=30, second=0)
-                    morning_end = now_dt.replace(hour=11, minute=30, second=0)
-                    afternoon_start = now_dt.replace(hour=13, minute=0, second=0)
-                    afternoon_end = now_dt.replace(hour=15, minute=0, second=0)
-                    _elapsed_min = 0
-                    if now_dt >= afternoon_end:
-                        _elapsed_min = TOTAL_MINUTES
-                    elif now_dt >= afternoon_start:
-                        _elapsed_min = 120 + (now_dt - afternoon_start).total_seconds() / 60
-                    elif now_dt >= morning_end:
-                        _elapsed_min = 120
-                    elif now_dt >= morning_start:
-                        _elapsed_min = (now_dt - morning_start).total_seconds() / 60
                     for code in stock_codes:
                         q = quotes_data.get(code, {})
                         if not q:
                             continue
-                        vr = q.get("volume_ratio", 0) or q.get("vol_ratio", 0)
-                        if vr and vr > 0:
+                        vr = resolve_volume_ratio(
+                            q,
+                            now=now_dt,
+                            avg_volume=_vol_avg5[code] if code in _vol_avg5 else None,
+                        )
+                        if vr:
                             _vr_cache[code] = vr
-                        elif _elapsed_min > 0 and code in _vol_avg5 and _vol_avg5[code] > 0:
-                            cur_vol = q.get("volume", 0)
-                            avg5 = _vol_avg5[code]
-                            expected = avg5 * (_elapsed_min / TOTAL_MINUTES)
-                            if expected > 0:
-                                _vr_cache[code] = cur_vol / expected
 
                     # ====== 排序（仅个股）======
                     sort_label = _SORT_KEYS.get(sort_by, _SORT_KEYS["chg"])[0]

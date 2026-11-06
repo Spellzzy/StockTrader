@@ -76,22 +76,61 @@
       </div>`;
   }
 
+  /* 与 watch 着色一致：>=3 红、>=1.5 黄、>=0.8 绿，更低为灰。
+     标签：>=1.5 放量，0.8–1.5 平量，<0.8 缩量；没有可用量比则只有「—」。
+     优先 quote.volume_ratio，其次 vol_ratio，再次详情接口回退值。 */
+  function positiveNum() {
+    for (let i = 0; i < arguments.length; i++) {
+      const n = Number(arguments[i]);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return null;
+  }
+
+  function detailVolumeRatio(d) {
+    const q = (d && d.quote) || {};
+    const n = positiveNum(q.volume_ratio, q.vol_ratio, d && d.volume_ratio);
+    if (n == null) return { text: '—', label: '', cls: 'dim', value: null };
+    let color = 'dim';
+    let label = '缩量';
+    if (n >= 3) { color = 'up'; label = '放量'; }
+    else if (n >= 1.5) { color = 'warn'; label = '放量'; }
+    else if (n >= 0.8) { color = 'down'; label = '平量'; }
+    return { text: fmt(n, 2), label, cls: color, value: n };
+  }
+
+  function volumeRatioCard(view) {
+    const badge = view.label
+      ? `<span class="tag vr-tag ${view.cls}">${esc(view.label)}</span>` : '';
+    return `<div class="card vr-card"><div class="k">量比</div>
+      <div class="v ${view.cls}">${esc(view.text)}${badge}</div></div>`;
+  }
+
+  function turnoverCard(q) {
+    const hasRate = q.turnover_rate !== null && q.turnover_rate !== undefined
+      && q.turnover_rate !== '';
+    const v = hasRate ? q.turnover_rate : q.turnover;
+    return `<div class="card turnover-card"><div class="k">换手</div>
+      <div class="v">${num(v)}%</div></div>`;
+  }
+
   function overviewHtml(d) {
     const q = d.quote || {}, tech = d.tech || {}, s = d.stock || {}, h = d.holding;
     const price = q.price || 0;
     const chg = q.change_percent || 0;
     const amplitude = (q.prev_close && q.high && q.low)
       ? (Number(q.high) - Number(q.low)) / Number(q.prev_close) * 100 : null;
-    const turnover = q.turnover_rate !== null && q.turnover_rate !== undefined
-      ? q.turnover_rate : q.turnover;
+    const vrView = detailVolumeRatio(d);
     const cards = [
       card('现价', num(price), cls(chg)),
       card('涨跌额 / 幅', signed(q.change || 0) + ' / ' + signed(chg) + '%', cls(chg)),
+      volumeRatioCard(vrView),
       card('昨收 / 今开', `${num(q.prev_close)} / ${num(q.open)}`, 'neutral'),
       card('最高 / 最低', `${num(q.high)} / ${num(q.low)}`, 'neutral'),
       card('振幅', amplitude === null ? '-' : num(amplitude) + '%', 'neutral'),
       card('成交额', unit(q.amount, '万元'), 'neutral'),
-      card('成交量 / 换手', `${unit(q.volume, '手', 0)} / ${num(turnover)}%`, 'neutral'),
+      card('成交量', unit(q.volume, '手', 0), 'neutral'),
+      turnoverCard(q),
       card('PE / PB', `${num(q.pe_ratio)} / ${num(q.pb_ratio)}`, 'neutral'),
       card('总市值', unit(q.total_market_cap, '亿元'), 'neutral'),
       card('流通市值', unit(q.circulating_market_cap, '亿元'), 'neutral'),
@@ -561,6 +600,8 @@
   ST.openStockDetail = open;
   ST.closeStockDetail = close;
   ST.currentStockDetail = () => currentData;
+  ST.detailVolumeRatio = detailVolumeRatio;
+  ST.detailOverviewHtml = overviewHtml;
 
   $('detail-close').addEventListener('click', close);
   $('stock-detail').addEventListener('click', e => {

@@ -486,6 +486,7 @@ async def stock_detail(code: str = Query(..., min_length=4)) -> dict:
     from sqlalchemy import func, select
 
     from app.db.database import session_scope
+    from app.domain.volume_ratio import resolve_volume_ratio
     from app.models.alert import Alert
     from app.models.portfolio import PortfolioRecord
     from app.models.stock import Stock, normalize_stock_code
@@ -554,10 +555,22 @@ async def stock_detail(code: str = Query(..., min_length=4)) -> dict:
         except Exception as e:
             logger.warning(f"详情本地数据读取失败 {norm_code}: {e}")
 
+        # 量比与 watch 同源：源字段优先，没有则用日 K 回退。算不出保持 None，
+        # 前端显示「—」，不用 60 日「最新量/均量」顶替。
+        volume_ratio = resolve_volume_ratio(quote)
+        if volume_ratio is None and quote:
+            try:
+                k6 = market.get_kline_df(norm_code, "day", 6)
+            except Exception as e:
+                logger.warning(f"详情量比回退K线失败 {norm_code}: {e}")
+                k6 = None
+            volume_ratio = resolve_volume_ratio(quote, kline_df=k6, now=datetime.now())
+
         return {
             "code": norm_code,
             "name": stock_info.get("name") or quote.get("name") or "",
             "quote": quote,
+            "volume_ratio": volume_ratio,
             "kline": rows,
             "tech": _kline_tech(rows),
             "stock": stock_info,
