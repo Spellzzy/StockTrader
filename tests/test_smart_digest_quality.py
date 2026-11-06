@@ -291,6 +291,9 @@ def test_weak_bullish_and_bearish_render_full_card_in_markdown_and_plain():
         "- 质量: 弱于基线",
         "- 说明: 准确率低于随机基线，信号已降权",
         "- 依据: 动量、放量",
+        "- 准确率: 27.0% · 基线 33.3%",
+        "- 降权: 0.40",
+        "- 置信度: 55.0%",
     ])
     bear_card = "\n".join([
         "⚠️ 📎 可信摘要",
@@ -298,6 +301,9 @@ def test_weak_bullish_and_bearish_render_full_card_in_markdown_and_plain():
         "- 质量: 弱于基线",
         "- 说明: 弱于基线，勿当强信号",
         "- 依据: 破位",
+        "- 准确率: 27.0% · 基线 33.3%",
+        "- 降权: 0.40",
+        "- 置信度: 55.0%",
     ])
     assert _credibility_card(bull) == bull_card
     assert _credibility_card(bear) == bear_card
@@ -319,6 +325,7 @@ def test_strong_card_says_better_than_baseline_without_scare_copy():
         "- 质量: 优于基线",
         "- 说明: 质量正常",
         "- 依据: 均线多头、放量、北向流入",
+        "- 置信度: 55.0%",
     ])
     assert _credibility_card(item) == expected
     for word in _SCARE:
@@ -376,3 +383,122 @@ def test_sideways_weak_quality_keeps_warning_line_without_full_card():
         assert "📎 可信摘要" not in neutral_part
         assert "- 质量:" not in neutral_part
         assert "- 依据:" not in neutral_part
+        assert "准确率:" not in neutral_part
+        assert "降权:" not in neutral_part
+
+
+def test_evidence_lines_appear_only_when_quality_has_numbers():
+    full = _item(
+        "sh600519", "完整", "看涨", 9.0, 3, [],
+        quality={
+            "below_baseline": False,
+            "mean_accuracy": 0.273,
+            "baseline": 0.333,
+            "factor": 0.4,
+            "note": "样本一般",
+            "confidence": 12.5,
+            "models_used": 3,
+        },
+    )
+    card = _credibility_card(full)
+    assert "- 质量: 优于基线" in card
+    assert "- 说明: 样本一般" in card
+    assert "- 准确率: 27.3% · 基线 33.3%" in card
+    assert "- 降权: 0.40" in card
+    assert "- 置信度: 12.5%" in card
+    assert "- 模型数: 3" in card
+    assert "⚠️" not in card
+
+    only_acc = _item(
+        "sh600000", "只有准确率", "看涨", 1.0, 1, [],
+        quality={"below_baseline": False, "mean_accuracy": 0.5, "note": "质量正常"},
+    )
+    only_acc["confidence"] = None
+    acc_card = _credibility_card(only_acc)
+    assert "- 准确率: 50.0%" in acc_card
+    assert " · 基线" not in acc_card
+    assert "- 基线:" not in acc_card
+    assert "降权:" not in acc_card
+    assert "置信度:" not in acc_card
+    assert "模型数:" not in acc_card
+
+    only_base = _item(
+        "sh600001", "只有基线", "看跌", -1.0, 1, [],
+        quality={"below_baseline": True, "baseline": 0.333, "note": "弱"},
+    )
+    only_base.pop("confidence")
+    base_card = _credibility_card(only_base)
+    assert "- 基线: 33.3%" in base_card
+    assert "准确率:" not in base_card
+    assert "- 质量: 弱于基线" in base_card
+    assert base_card.startswith("⚠️ 📎 可信摘要")
+
+    zero_factor = _item(
+        "sz000001", "零降权", "看涨", 2.0, 1, [],
+        quality={"below_baseline": False, "factor": 0, "note": "质量正常"},
+    )
+    zero_factor.pop("confidence")
+    assert "- 降权: 0.00" in _credibility_card(zero_factor)
+
+    junk = _item(
+        "sz000002", "坏数字", "看涨", 2.0, 1, [],
+        quality={
+            "below_baseline": False,
+            "mean_accuracy": "高",
+            "baseline": None,
+            "factor": True,
+            "note": "质量正常",
+            "models_used": "两只",
+        },
+    )
+    junk.pop("confidence")
+    junk_card = _credibility_card(junk)
+    assert "- 质量: 优于基线" in junk_card
+    assert "- 说明: 质量正常" in junk_card
+    assert "准确率:" not in junk_card
+    assert "降权:" not in junk_card
+    assert "模型数:" not in junk_card
+
+
+def test_sideways_keeps_warning_even_when_quality_has_evidence_numbers():
+    quality = dict(WEAK_QUALITY, note="震荡模型偏弱")
+    sideways = _item("sz000003", "震荡股", "震荡", 0.5, 2, [], quality=quality)
+    bull = _item(
+        "sh600001", "弱看涨", "看涨", 6.0, 2, [],
+        quality=dict(WEAK_QUALITY, note="看涨模型偏弱"),
+    )
+    md, plain = _render(_digest(bullish=[bull], neutral=[sideways]))
+    for text in (md, plain):
+        neutral_part = text.split("继续持有", 1)[1]
+        assert "⚠️ 可信度: 震荡模型偏弱" in neutral_part
+        assert "准确率:" not in neutral_part
+        assert "降权:" not in neutral_part
+        assert "📎 可信摘要" not in neutral_part
+        assert "- 准确率: 27.0% · 基线 33.3%" in text
+        assert "- 降权: 0.40" in text
+        assert text.count("📎 可信摘要") == 1
+
+
+def test_generate_copies_models_used_onto_card(monkeypatch):
+    svc = SmartDigestService()
+    watched = [SimpleNamespace(code="sh600001", name="弱看涨")]
+    row = _scan_row("sh600001", "看涨", 12.0, quality=WEAK_QUALITY, stars=2)
+    row["combined"]["models_used"] = 3
+    monkeypatch.setattr(svc, "_watchlist", MagicMock(list_watched=lambda: watched))
+    monkeypatch.setattr(
+        svc, "_predictor",
+        MagicMock(scan=lambda codes, use_dl=False: [row], has_llm=False),
+    )
+    import app.services.market_scan_service as mss
+
+    monkeypatch.setattr(mss, "MarketScanService", _FakeScan)
+
+    digest = svc.generate()
+    assert digest["bullish"][0]["models_used"] == 3
+    assert digest["bullish"][0]["quality"]["factor"] == 0.4
+    for text in (digest["summary_text"], digest["plain_text"]):
+        assert "- 准确率: 27.0% · 基线 33.3%" in text
+        assert "- 降权: 0.40" in text
+        assert "- 模型数: 3" in text
+        assert "- 质量: 弱于基线" in text
+        assert "⚠️ 可信度:" not in text

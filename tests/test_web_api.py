@@ -1,5 +1,7 @@
 """Web API 单测：TestClient + mock，零网络、零真实数据写入"""
 
+import json
+
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
@@ -276,6 +278,94 @@ def test_open_report_still_serves_html_only(client, monkeypatch, tmp_path):
     md = client.get("/reports/digest_20261106_am.md")
     assert md.status_code == 400
     assert md.json() == {"ok": False, "error": "只支持打开 HTML 报告"}
+
+
+def test_reports_list_includes_json_digest(client, monkeypatch, tmp_path):
+    payload = {
+        "date": "2026-11-06 09:30",
+        "slot": "am",
+        "total": 1,
+        "bullish": [{"code": "sh600519", "name": "茅台", "quality": {"factor": 0.4}}],
+        "bearish": [],
+        "neutral": [],
+    }
+    (tmp_path / "digest_20261106_am.json").write_text(
+        json.dumps(payload, ensure_ascii=False), encoding="utf-8",
+    )
+    (tmp_path / "digest_20261106_am.md").write_text(CREDIBILITY_MD, encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("ignore", encoding="utf-8")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+    monkeypatch.setattr(api_mod, "_report_files", _REAL_REPORT_FILES)
+
+    files = client.get("/api/reports").json()["data"]["files"]
+    by_name = {item["name"]: item for item in files}
+    assert by_name["digest_20261106_am.json"]["kind"] == "json"
+    assert by_name["digest_20261106_am.md"]["kind"] == "markdown"
+    assert "notes.txt" not in by_name
+
+
+def test_report_json_content_returns_parsed_object(client, monkeypatch, tmp_path):
+    payload = {
+        "date": "2026-11-06 09:30",
+        "slot": "am",
+        "total": 1,
+        "bullish": [{
+            "code": "sh600519",
+            "name": "茅台",
+            "quality": {"below_baseline": True, "mean_accuracy": 0.27, "factor": 0.4},
+        }],
+        "bearish": [],
+        "neutral": [],
+    }
+    name = "digest_20261106_am.json"
+    (tmp_path / name).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+
+    r = client.get(f"/api/reports/{name}/content")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert isinstance(body["data"], dict)
+    assert body["data"]["slot"] == "am"
+    assert body["data"]["bullish"][0]["quality"]["factor"] == 0.4
+    assert "content" not in body["data"]
+
+
+def test_report_json_content_rejects_invalid_json(client, monkeypatch, tmp_path):
+    (tmp_path / "digest_bad.json").write_text("{", encoding="utf-8")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+
+    r = client.get("/api/reports/digest_bad.json/content")
+
+    assert r.status_code == 400
+    assert r.json() == {"ok": False, "error": "JSON 无法解析"}
+
+
+def test_open_report_rejects_json_file(client, monkeypatch, tmp_path):
+    (tmp_path / "digest_20261106_am.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(api_mod, "DEFAULT_REPORT_DIR", tmp_path)
+
+    r = client.get("/reports/digest_20261106_am.json")
+
+    assert r.status_code == 400
+    assert r.json() == {"ok": False, "error": "只支持打开 HTML 报告"}
+
+
+def test_reports_page_previews_json_readonly(client):
+    """JSON 打开后是结构化预览，不是可编辑编辑器；Markdown 原文路径仍在。"""
+    html = client.get("/").text
+    assert "只读结构化回放" in html
+    js = client.get("/static/app.js").text
+    assert "function renderDigestPreview" in js
+    assert "async function openJsonReport" in js
+    assert "openJsonReport(this.getAttribute('data-json'))" in js
+    assert "report-json" in js
+    assert "<textarea" not in js
+    assert "contenteditable" not in js
+    css = client.get("/static/style.css").text
+    assert ".report-json" in css
+    assert ".badge.json" in css
 
 
 def test_reports_panel_opens_markdown_inline_and_html_in_new_tab(client):

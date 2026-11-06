@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
@@ -159,24 +160,28 @@ def _model_count() -> int:
     return len(list((save_dir / "ml").glob("*.joblib")))
 
 
+_REPORT_KINDS = {".html": "html", ".md": "markdown", ".json": "json"}
+
+
 def _report_files() -> list[dict]:
     if not DEFAULT_REPORT_DIR.exists():
         return []
     files = []
     for path in sorted(DEFAULT_REPORT_DIR.iterdir(), key=lambda p: p.name, reverse=True):
-        if path.is_file() and path.suffix in (".html", ".md"):
+        kind = _REPORT_KINDS.get(path.suffix)
+        if path.is_file() and kind:
             files.append({
                 "name": path.name,
                 "size": path.stat().st_size,
                 "updated_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds"),
-                "kind": "html" if path.suffix == ".html" else "markdown",
+                "kind": kind,
             })
     return files
 
 
 def _safe_report_path(name: str) -> Path:
     """防路径穿越：只接受纯文件名 + 白名单后缀"""
-    if Path(name).name != name or name.startswith(".") or Path(name).suffix not in (".html", ".md"):
+    if Path(name).name != name or name.startswith(".") or Path(name).suffix not in _REPORT_KINDS:
         raise HTTPException(status_code=400, detail="非法文件名")
     path = DEFAULT_REPORT_DIR / name
     if not path.is_file():
@@ -323,8 +328,19 @@ async def reports() -> dict:
 
 @app.get("/api/reports/{name}/content")
 async def report_content(name: str) -> dict:
-    """读取已落盘的 Markdown 日报正文。HTML 仍由 /reports/{name} 新标签打开。"""
+    """Markdown 返回正文字符串；JSON 返回解析后的对象。
+
+    HTML 仍由 /reports/{name} 新标签打开，不从这里读。
+    """
     path = _safe_report_path(name)
+    if path.suffix == ".json":
+        def read_json():
+            return json.loads(path.read_text(encoding="utf-8"))
+
+        try:
+            return ok(await run_in_threadpool(read_json))
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="JSON 无法解析")
     if path.suffix != ".md":
         raise HTTPException(status_code=400, detail="只支持读取 Markdown 报告")
 

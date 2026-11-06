@@ -294,6 +294,22 @@ button.report-item { width: 100%; text-align: left; cursor: pointer; font: inher
 .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px;
   background: var(--surface-2); color: var(--dim); margin-left: 8px; }
 .badge.html { color: var(--accent); }
+.badge.json { color: var(--warn); }
+.report-json { background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 16px; }
+.report-json-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
+.report-json h3 { margin: 16px 0 8px; font-size: 14px; }
+.vol-mini { display: flex; align-items: stretch; gap: 8px; height: 84px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; }
+.vol-col { flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; gap: 4px; min-width: 0; height: 100%; }
+.vol-track { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.vol-bar { width: 14px; border-radius: 3px 3px 0 0; background: var(--accent); min-height: 2px; }
+.vol-bar.up { background: var(--up); }
+.vol-bar.down { background: var(--down); }
+.vol-col span { color: var(--dim); font-size: 10px; line-height: 1; }
+.vol-hint { margin-top: 6px; }
 
 footer { text-align: center; color: var(--dim); font-size: 12px; padding: 20px; border-top: 1px solid var(--line); }
 code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }

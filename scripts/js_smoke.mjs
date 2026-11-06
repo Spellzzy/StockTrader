@@ -257,9 +257,25 @@ const credibility = [
   "- 置信度: 72.5%（样本 120 日）",
 ].join("\n");
 const digestBody = `# 智能日报 2026-11-06 09:30 (am)\n\n${credibility}\n\n贵州茅台 看涨\n`;
+const jsonName = "digest_20261106_am.json";
+const digestJson = {
+  date: "2026-11-06 09:30",
+  slot: "am",
+  total: 1,
+  bullish: [{
+    code: "sh600519", name: "茅台", signal: "看涨", score: 12.5,
+    quality: {
+      mean_accuracy: 0.273, baseline: 0.333, factor: 0.4,
+      below_baseline: true, note: "样本偏弱",
+    },
+  }],
+  bearish: [],
+  neutral: [{ code: "sz000001", name: "平安", signal: "震荡", score: 0.2 }],
+};
 const reportFiles = [
   { name: htmlName, size: 2048, updated_at: "2026-11-06T09:30:00", kind: "html" },
   { name: digestName, size: digestBody.length, updated_at: "2026-11-06T09:30:00", kind: "markdown" },
+  { name: jsonName, size: 320, updated_at: "2026-11-06T09:30:00", kind: "json" },
 ];
 const seenReportUrls = [];
 const origFetch = globalThis.fetch;
@@ -267,6 +283,9 @@ globalThis.fetch = async (url) => {
   const u = String(url);
   seenReportUrls.push(u);
   if (u.includes("/api/reports/") && u.endsWith("/content")) {
+    if (u.includes(".json")) {
+      return { ok: true, json: async () => ({ ok: true, data: digestJson }) };
+    }
     return { ok: true, json: async () => ({ ok: true, data: { name: digestName, content: digestBody } }) };
   }
   if (u.includes("/api/reports")) {
@@ -307,8 +326,29 @@ for (const line of credibility.split("\n")) {
   if (!shown.includes(line)) throw new Error("可信度卡片原文丢失: " + line);
 }
 if (shown !== digestBody) throw new Error("Markdown 正文被改写，未按原文展示");
+
+const jsonItem = listHtml.match(new RegExp(`<button\\b[^>]*>[\\s\\S]*?${jsonName}[\\s\\S]*?</button>`));
+if (!jsonItem) throw new Error("报告列表未渲染 JSON");
+if (jsonItem[0].includes('target="_blank"') || !jsonItem[0].includes("openJsonReport")) {
+  throw new Error("JSON 应在页内只读预览，而不是新标签打开");
+}
+if (typeof globalThis.openJsonReport !== "function") {
+  throw new Error("app.js 未暴露 openJsonReport");
+}
+await globalThis.openJsonReport(jsonName);
+const jsonView = reportBody.children[0];
+const jsonMarkup = (jsonView && jsonView.innerHTML) || "";
+if (!jsonView || jsonView.className !== "report-json") {
+  throw new Error("JSON 未按结构化预览展示");
+}
+for (const piece of ["茅台", "平安", "27.3%", "33.3%", "0.40", "样本偏弱", "只读预览"]) {
+  if (!jsonMarkup.includes(piece)) throw new Error("结构化预览缺少: " + piece);
+}
+if (jsonMarkup.includes("<textarea") || jsonMarkup.includes("contenteditable") || jsonMarkup.includes("<input")) {
+  throw new Error("JSON 预览不应是可编辑编辑器");
+}
 globalThis.fetch = origFetch;
-console.log("  报告页 Markdown 原文 / HTML 新标签行为断言 OK");
+console.log("  报告页 Markdown 原文 / JSON 结构化预览 / HTML 新标签行为断言 OK");
 
 /* 个股详情量比：源字段 / 回退值 / 全缺显示「—」，且不顶替 60 日均量倍数 */
 if (typeof ST.detailVolumeRatio !== "function") {
@@ -388,7 +428,46 @@ if (!hotOverview.includes("3.20") || !hotOverview.includes("放量")) {
 if (!hotOverview.includes("最新量 / 均量")) {
   throw new Error("有量比时仍要单独保留「最新量 / 均量」");
 }
-console.log("  个股详情量比展示行为断言 OK");
+if (!emptyOverview.includes("vol-mini") || !emptyOverview.includes("连放")) {
+  throw new Error("近端放量应在概览显示迷你量柱和连放");
+}
+if (typeof ST.recentVolumeHtml !== "function") {
+  throw new Error("detail.js 未暴露 recentVolumeHtml");
+}
+const shrinking = ST.recentVolumeHtml([
+  { date: "2026-11-04", volume: 300 },
+  { date: "2026-11-05", volume: 200 },
+  { date: "2026-11-06", volume: 100 },
+]);
+if (!shrinking.includes("连缩 3 日") || !shrinking.includes("vol-mini")) {
+  throw new Error("连缩未提示");
+}
+const flatVol = ST.recentVolumeHtml([
+  { date: "2026-11-04", volume: 10 },
+  { date: "2026-11-05", volume: 10 },
+  { date: "2026-11-06", volume: 10 },
+]);
+if (flatVol.includes("连放") || flatVol.includes("连缩")) {
+  throw new Error("量能持平不应提示连放/连缩");
+}
+if ((flatVol.match(/class="vol-bar/g) || []).length !== 3) {
+  throw new Error("持平仍应画出量柱");
+}
+const manyVols = [];
+for (let i = 0; i < 8; i++) {
+  manyVols.push({ date: `2026-11-0${i + 1}`, volume: 100 * (i + 1) });
+}
+const recent = ST.recentVolumeHtml(manyVols);
+if ((recent.match(/class="vol-bar/g) || []).length !== 5) {
+  throw new Error("量柱应只取近 5 日");
+}
+if (!recent.includes("连放 5 日") || recent.includes("11-01") || !recent.includes("11-08")) {
+  throw new Error("近 5 日窗口或连放天数不对");
+}
+if (ST.recentVolumeHtml([]) !== "" || ST.recentVolumeHtml(null) !== "") {
+  throw new Error("没有 K 线时不应渲染量能块");
+}
+console.log("  个股详情量比与近 5 日量能行为断言 OK");
 
 await new Promise((r) => setTimeout(r, 120));
 if (asyncFailures > 0) {

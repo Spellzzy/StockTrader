@@ -21,6 +21,10 @@ def _persist_cli_digest(digest: dict) -> None:
         console.print("[yellow]⚠️ 日报落盘失败，请检查 data/reports 目录权限[/yellow]")
         return
     console.print(f"[dim]日报已写入 {paths['markdown']}[/dim]")
+    if paths.get("json"):
+        console.print(f"[dim]结构化回放已写入 {paths['json']}[/dim]")
+    else:
+        console.print("[yellow]⚠️ 结构化 JSON 未写入，请查看日志[/yellow]")
 
 
 def register_digest_commands(digest_app: typer.Typer, cli_module=None):
@@ -184,7 +188,7 @@ def register_digest_commands(digest_app: typer.Typer, cli_module=None):
     def digest_preview(
         dl: bool = typer.Option(False, "--dl", help="使用深度学习模型"),
     ):
-        """预览智能日报（仅扫描，不推送不 LLM，快速查看）"""
+        """预览智能日报（仅扫描，不推送、不落盘、不调用 LLM）"""
         from app.services.smart_digest import SmartDigestService
 
         svc = SmartDigestService()

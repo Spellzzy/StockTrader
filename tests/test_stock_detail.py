@@ -223,13 +223,15 @@ def test_frontend_detail_panes_are_wired(client):
                    "candleChart", "maSeries", "kline-period", "kline-adjust",
                    "orderBook", "innerOuter", "total_market_cap",
                    "量比", "放量", "平量", "缩量", "—", "vr-card",
-                   "turnover_rate", "最新量 / 均量"):
+                   "turnover_rate", "最新量 / 均量",
+                   "recentVolumeHtml", "vol-mini", "连放", "连缩"):
         assert marker in detail_js, f"detail.js 缺少 {marker}"
+    assert "/api/stock/volume" not in detail_js
 
     css = client.get("/static/style.css").text
     for cls in (".detail-tabs", ".detail-tab", ".flow-bar", ".news-item",
                 ".candle-svg", ".book-bar", ".io-bar", ".kline-tools",
-                ".vr-card", ".warn", ".turnover-card"):
+                ".vr-card", ".warn", ".turnover-card", ".vol-mini", ".vol-bar"):
         assert cls in css, f"style.css 缺少 {cls}"
 
 
