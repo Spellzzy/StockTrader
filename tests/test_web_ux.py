@@ -225,6 +225,102 @@ def test_sidebar_replaces_horizontal_tabs():
     assert 'class="tab active"' in html
 
 
+# 窄轨图标：分组头与页面项各用一个 sprite symbol。分析页与分析组语义不同。
+GROUP_ICONS = {
+    "daily": ("icon-daily", "日常"),
+    "analysis": ("icon-analysis-group", "分析"),
+    "trade": ("icon-trade", "交易"),
+    "system": ("icon-system", "系统"),
+}
+TAB_ICONS = {
+    "overview": ("icon-overview", "总览"),
+    "market": ("icon-market", "行情"),
+    "analysis": ("icon-analysis", "统计"),
+    "backtest": ("icon-backtest", "回测"),
+    "lab": ("icon-lab", "策略实验室"),
+    "scan": ("icon-scan", "市场摘选"),
+    "predict": ("icon-predict", "AI 预测"),
+    "trades": ("icon-trades", "交易持仓"),
+    "write": ("icon-write", "录入交易"),
+    "alerts": ("icon-alerts", "预警"),
+    "paper": ("icon-paper", "模拟盘"),
+    "settings": ("icon-settings", "设置"),
+    "reports": ("icon-reports", "报告"),
+}
+_RAIL_ABBREV = set("常览情统析测策摘预交仓录警模系设报")
+
+
+def _button_chunk(html, pattern):
+    match = re.search(pattern, html, re.S)
+    assert match, f"未找到按钮 {pattern}"
+    return match.group(0)
+
+
+def test_narrow_rail_uses_svg_icons_not_abbreviations():
+    """收起/窄屏轨用描边 SVG，展开侧栏只留中文标签；title 仍是完整名称。"""
+    html = client.get("/").text
+    assert 'id="nav-icons"' in html
+    for symbol, _title in list(GROUP_ICONS.values()) + list(TAB_ICONS.values()):
+        assert f'id="{symbol}"' in html, f"sprite 缺少 {symbol}"
+        assert f'href="#{symbol}"' in html, f"侧栏未引用 {symbol}"
+
+    sprite = re.search(r'<svg[^>]*id="nav-icons"[\s\S]*?</svg>', html)
+    assert sprite, "缺少导航图标 sprite"
+    assert sprite.group(0).count('viewBox="0 0 24 24"') == len(GROUP_ICONS) + len(TAB_ICONS)
+    assert 'stroke="currentColor"' in sprite.group(0)
+
+    side = html.split('id="side-nav"', 1)[1].split("<main", 1)[0]
+    spans = re.findall(
+        r'<span class="(?:nav-glyph|tab-icon)"[^>]*>(.*?)</span>', side, re.S)
+    assert len(spans) == len(GROUP_ICONS) + len(TAB_ICONS)
+    for span in spans:
+        text = re.sub(r"<[^>]+>", "", span)
+        assert text.strip() == "", f"图标位不应再放单字缩写，得到 {text!r}"
+        assert not any(ch in text for ch in _RAIL_ABBREV)
+        assert "<svg" in span and 'class="nav-icon"' in span
+        assert "<use " in span
+
+    for group, (symbol, title) in GROUP_ICONS.items():
+        block = _nav_group_html(html, group)
+        btn = _button_chunk(
+            block, r'<button type="button" class="nav-group-toggle"[^>]*>.*?</button>')
+        assert f'title="{title}"' in btn
+        assert f'href="#{symbol}"' in btn
+        label = re.search(r'class="nav-group-label">(.*?)</span>', btn)
+        assert label and label.group(1) == title
+
+    for tab, (symbol, title) in TAB_ICONS.items():
+        btn = _button_chunk(
+            html,
+            rf'<button type="button" class="tab[^"]*" data-tab="{tab}"[^>]*>.*?</button>')
+        assert f'title="{title}"' in btn
+        assert f'href="#{symbol}"' in btn
+        label = re.search(r'class="tab-label">(.*?)</span>', btn)
+        assert label and label.group(1) == title
+        assert title in btn.split('class="tab-label"', 1)[0] or f'title="{title}"' in btn
+
+    css = client.get("/static/style.css").text
+    hidden = re.search(
+        r"\.nav-glyph\s*,\s*\.tab-icon\s*\{([^}]*)\}", css)
+    assert hidden and "display: none" in hidden.group(1), "展开态应隐藏轨图标"
+    shown = re.search(
+        r"body\.side-rail\s+\.nav-glyph\s*,\s*body\.side-rail\s+\.tab-icon\s*\{([^}]*)\}",
+        css)
+    assert shown, "缺少 side-rail 图标显示规则"
+    assert "display: flex" in shown.group(1)
+    assert "justify-content: center" in shown.group(1)
+    assert "align-items: center" in shown.group(1)
+    narrow = re.search(
+        r"@media\s*\(max-width:\s*959px\)\s*\{([\s\S]*?)\n\}", css)
+    assert narrow, "缺少 959px 窄屏规则"
+    assert "body:not(.side-expanded) .nav-glyph" in narrow.group(1)
+    assert "body:not(.side-expanded) .tab-icon" in narrow.group(1)
+    icon_css = re.search(r"\.nav-icon\s*\{([^}]*)\}", css)
+    assert icon_css, "缺少 .nav-icon"
+    assert "currentColor" in icon_css.group(1)
+    assert "fill: none" in icon_css.group(1)
+
+
 def test_sidebar_state_is_separate_from_density():
     """组折叠与侧栏展开写入自己的 localStorage；紧凑密度仍只作用于主区"""
     ux = client.get("/static/ux.js").text
