@@ -1253,6 +1253,24 @@ async def scan_run(run_id: int) -> dict:
     return ok({"run": run})
 
 
+@app.get("/api/forecast/high")
+async def forecast_high(code: str = Query(..., min_length=4)) -> dict:
+    """今日目标最高价（统计分位数区间 + 触及概率 + walk-forward 回测质量）
+
+    纯只读、不训练模型、不落库；盘前给全天区间，盘中按时间进度收敛，
+    收盘后展示当日实际最高价。
+    """
+    from app.services.high_forecast_service import HighForecastService
+
+    def collect():
+        return HighForecastService().forecast(code)
+
+    try:
+        return ok(await run_in_threadpool(collect))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/scan/config")
 async def scan_config() -> dict:
     """回显 market_scan 默认配置，供 Web 表单初始化（避免勾选框默认值覆盖 config）"""

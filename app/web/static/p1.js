@@ -318,11 +318,63 @@ async function startTraining(code) {
   }
 }
 
+/* ---------------- 今日目标最高价（统计区间，不训练模型） ---------------- */
+const PHASE_LABEL = {
+  premarket: '盘前 · 全天目标', intraday: '盘中 · 剩余时段', closed: '已收盘',
+};
+
+async function loadHighForecast() {
+  const el = $('#high-forecast'), hint = $('#high-hint');
+  const code = predictCode();
+  if (!code) { el.innerHTML = '<div class="result-box dim">请先填股票代码</div>'; return; }
+  el.innerHTML = '<div class="detail-loading"><span class="spinner"></span> 计算目标高点…</div>';
+  try {
+    const d = await api('/api/forecast/high?code=' + encodeURIComponent(code));
+    if (predictCode() !== code) return;        // 期间代码又改了
+    const cards = [
+      card('现价', finite(d.price)),
+      card('今日已高', finite(d.day_high)),
+      card('目标中枢 P75', finite(d.center), 'neutral'),
+      card('目标区间', finite(d.band.low) + ' ~ ' + finite(d.band.high), 'neutral'),
+      card('上行空间', signed(d.upside_pct.p50) + '% ~ ' + signed(d.upside_pct.p90) + '%',
+        cls(d.upside_pct.p75)),
+    ].join('');
+    const labels = { p50: 'P50 下沿', p75: 'P75 中枢', p90: 'P90 上沿' };
+    const rows = ['p50', 'p75', 'p90'].map(k => `<tr>
+      <td>${labels[k]}</td><td class="num">${finite(d.targets[k])}</td>
+      <td class="num ${cls(d.upside_pct[k])}">${signed(d.upside_pct[k])}%</td>
+      <td class="num">${finite(d.probabilities[k] * 100, 0)}%</td></tr>`).join('');
+    const b = d.basis || {}, q = d.quality || {};
+    const quant = b.up_quantiles_pct || {};
+    const qualityLine = q.samples
+      ? `<div class="${q.better_than_baseline ? 'dim' : 'quality-warn'}">walk-forward ${finite(q.samples, 0)} 日：
+          P75 触及率 ${finite(q.touch_p75 * 100, 0)}% · 区间覆盖率 ${finite(q.coverage * 100, 0)}% ·
+          MAE ${finite(q.mae_pct)}% vs 昨日高点基线 ${finite(q.baseline_mae_pct)}%
+          （${q.better_than_baseline ? '优于基线' : '不优于基线'}）</div>` : '';
+    el.innerHTML = `
+      <div class="cards">${cards}</div>
+      <div class="dim">${esc(PHASE_LABEL[d.phase] || d.phase)} · 昨收 ${finite(d.prev_close)} ·
+        交易进度 ${finite(d.progress * 100, 0)}% · 数据时间 ${esc(String(d.as_of || '').slice(0, 14))}</div>
+      <div class="table-wrap" style="margin-top:10px"><table>
+        <thead><tr><th>口径</th><th class="num">目标价</th>
+          <th class="num">相对现价</th><th class="num">触及概率</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      <div class="dim" style="margin-top:10px">依据：近 ${finite(b.sample_days, 0)} 日 ·
+        历史涨幅分位 P50/P75/P90 = ${finite(quant.p50)}% / ${finite(quant.p75)}% / ${finite(quant.p90)}% ·
+        振幅 P75 ${finite(b.amplitude_p75_pct)}% · 时间衰减 ${finite(b.decay)} ·
+        涨停上限 ${b.limit_price ? finite(b.limit_price) : '不适用'}</div>
+      ${qualityLine}
+      <div class="quality-warn" style="margin-top:10px">${esc(d.note || '')}</div>`;
+    hint.textContent = '';
+  } catch (e) {
+    el.innerHTML = '<div class="quality-warn">目标高点计算失败：' + esc(String(e.message || e)) + '</div>';
+  }
+}
+
 async function loadPredict() {
   const el = $('#predict-result');
   if (!el.innerHTML) el.innerHTML = '<div class="result-box dim">输入股票代码后点击「开始预测」。预测不会自动训练模型；缺模型时可点「准备模型」。</div>';
-  await loadCodePicker();
-  await checkModelStatus();
+  await Promise.all([loadCodePicker(), checkModelStatus(), loadHighForecast()]);
 }
 
 async function runPredict() {
@@ -399,9 +451,13 @@ $('#lab-signals-btn').addEventListener('click', loadSignals);
 $('#lab-optimize-btn').addEventListener('click', runOptimize);
 $('#predict-btn').addEventListener('click', runPredict);
 $('#predict-code').addEventListener('keydown', e => { if (e.key === 'Enter') runPredict(); });
-$('#predict-code').addEventListener('change', checkModelStatus);
-$('#predict-picker').addEventListener('change', e => {
-  if (e.target.value) $('#predict-code').value = e.target.value;
+$('#predict-code').addEventListener('change', () => {
   checkModelStatus();
+  loadHighForecast();
 });
+$('#predict-picker').addEventListener('change', e => {
+  // ux.js 会向输入框派发 change，模型状态与目标高点在那里统一刷新
+  if (e.target.value) $('#predict-code').value = e.target.value;
+});
+$('#high-refresh').addEventListener('click', loadHighForecast);
 })();

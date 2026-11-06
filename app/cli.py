@@ -1116,6 +1116,11 @@ from app.commands.market_scan import register_market_scan_commands
 
 register_market_scan_commands(app)
 
+# ==================== 今日目标最高价（从 commands/forecast.py 加载）====================
+from app.commands.forecast import register_forecast_commands
+
+register_forecast_commands(app)
+
 
 if __name__ == "__main__":
     app()

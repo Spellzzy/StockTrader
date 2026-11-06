@@ -243,3 +243,13 @@ market_scan:
       params: { lookback: 3 }
     - name: volume_expand         # 量比放宽到 1.2（原 1.5）
       params: { ma_window: 5, ratio: 1.2 }
+
+# ── 今日目标最高价（统计分位数口径，不训练模型） ──
+# 用法: stock-ai target-high sh600519 / Web「AI 预测」页自动展示
+# 环境变量覆盖示例: STOCK_AI_FORECAST__HIGH__LOOKBACK=90
+forecast:
+  high:
+    lookback: 120              # 历史样本回看交易日数
+    levels: [50, 75, 90]       # 分位数口径：下沿 / 中枢 / 上沿
+    backtest_days: 60          # walk-forward 回测天数（只用预测时点之前的数据）
+    decay_alpha: 0.7           # 盘中剩余空间衰减指数：越小，区间随时间收敛越快
