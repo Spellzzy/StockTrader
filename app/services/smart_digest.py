@@ -124,6 +124,9 @@ class SmartDigestService:
                 "stars": combined.get("stars", 0),
                 "key_factors": combined.get("key_factors", []),
             }
+            quality = combined.get("quality")
+            if quality is not None:
+                item["quality"] = quality
 
             if signal == "看涨":
                 bullish.append(item)
@@ -217,6 +220,18 @@ class SmartDigestService:
 
     # ==================== 文本组装 ====================
 
+
+    @staticmethod
+    def _quality_warning(item: dict) -> Optional[str]:
+        """弱模型警示文案；无 quality / 未低于基线则不提示。"""
+        quality = item.get("quality")
+        if not isinstance(quality, dict) or not quality.get("below_baseline"):
+            return None
+        note = quality.get("note")
+        if isinstance(note, str) and note.strip():
+            return note.strip()
+        return "弱于基线，勿当强信号"
+
     def _build_markdown_digest(self, digest: dict, code_names: dict) -> str:
         """组装 Markdown 格式的智能日报"""
         lines = []
@@ -241,6 +256,9 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"   关键: {' | '.join(item['key_factors'][:3])}")
+                warn = self._quality_warning(item)
+                if warn:
+                    lines.append(f"   ⚠️ 可信度: {warn}")
 
                 # LLM 分析追加
                 report = llm_reports.get(item["code"])
@@ -260,6 +278,9 @@ class SmartDigestService:
                     f"- **{item['name']}** ({item['code']}) — "
                     f"震荡整理中 (评分: {item['score']:+.1f}){factors_str}"
                 )
+                warn = self._quality_warning(item)
+                if warn:
+                    lines.append(f"  ⚠️ 可信度: {warn}")
             lines.append("")
 
         # 看跌区
@@ -275,6 +296,9 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"   风险: {' | '.join(item['key_factors'][:3])}")
+                warn = self._quality_warning(item)
+                if warn:
+                    lines.append(f"   ⚠️ 可信度: {warn}")
 
                 report = llm_reports.get(item["code"])
                 if report:
@@ -347,6 +371,9 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"     关键: {' | '.join(item['key_factors'][:3])}")
+                warn = self._quality_warning(item)
+                if warn:
+                    lines.append(f"     [yellow]⚠️ 可信度: {warn}[/yellow]")
 
                 report = llm_reports.get(item["code"])
                 if report:
@@ -362,6 +389,9 @@ class SmartDigestService:
                     f"  - [bold]{item['name']}[/bold] ({item['code']}) — "
                     f"震荡 (评分: {item['score']:+.1f})"
                 )
+                warn = self._quality_warning(item)
+                if warn:
+                    lines.append(f"    [yellow]⚠️ 可信度: {warn}[/yellow]")
             lines.append("")
 
         if bearish:
@@ -376,6 +406,9 @@ class SmartDigestService:
                 )
                 if item["key_factors"]:
                     lines.append(f"     风险: {' | '.join(item['key_factors'][:3])}")
+                warn = self._quality_warning(item)
+                if warn:
+                    lines.append(f"     [yellow]⚠️ 可信度: {warn}[/yellow]")
 
                 report = llm_reports.get(item["code"])
                 if report:
