@@ -7,6 +7,25 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <svg id="nav-icons" class="nav-icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="icon-daily" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/></g></symbol>
+    <symbol id="icon-overview" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></g></symbol>
+    <symbol id="icon-market" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5h16.5M4 19.5V4.5"/><path d="M4 15.5 8 11l3.2 2.4 4.3-5.2 4.5 3"/></g></symbol>
+    <symbol id="icon-analysis" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="5" y="11" width="3.5" height="9" rx="0.5"/><rect x="10.25" y="6" width="3.5" height="14" rx="0.5"/><rect x="15.5" y="9" width="3.5" height="11" rx="0.5"/></g></symbol>
+    <symbol id="icon-analysis-group" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 16.5 9 11l3.5 3.5 8-8"/><path d="M14 6.5h6.5V13"/></g></symbol>
+    <symbol id="icon-backtest" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4.5V9h4.5"/><path d="M12 8.5V13l3 2"/></g></symbol>
+    <symbol id="icon-lab" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v5.5L5.2 19.2A2 2 0 0 0 7 22h10a2 2 0 0 0 1.8-2.8L14 8.5V3"/><path d="M8.2 14.5h7.6"/></g></symbol>
+    <symbol id="icon-scan" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.25"/><path d="m16 16 4.5 4.5"/></g></symbol>
+    <symbol id="icon-predict" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 13.6 8 18.2 9.5 13.6 11 12 15.5 10.4 11 5.8 9.5 10.4 8 12 3.5z"/><path d="m18 14.5.7 1.8 1.8.7-1.8.7L18 19.5l-.7-1.8-1.8-.7 1.8-.7.7-1.8z"/></g></symbol>
+    <symbol id="icon-trade" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13"/><path d="m14 5 3 3-3 3"/><path d="M20 16H7"/><path d="m10 13-3 3 3 3"/></g></symbol>
+    <symbol id="icon-trades" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="M8.5 7.5V5.8A1.8 1.8 0 0 1 10.3 4h3.4a1.8 1.8 0 0 1 1.8 1.8v1.7"/><path d="M3.5 13h17"/></g></symbol>
+    <symbol id="icon-write" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 20.5h8"/><path d="M16.2 4.2a2.1 2.1 0 0 1 3 3L8.2 18.2 4 19.5l1.3-4.2 10.9-11.1z"/></g></symbol>
+    <symbol id="icon-alerts" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 16V10.2a5.8 5.8 0 0 1 11.6 0V16l1.6 2.2H4.6L6.2 16z"/><path d="M10 19.2a2 2 0 0 0 4 0"/></g></symbol>
+    <symbol id="icon-paper" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9 4.2h6v2.6H9z"/><path d="M9 11.5h6M9 15.5h4.5"/></g></symbol>
+    <symbol id="icon-system" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.82-.33 1.7 1.7 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-1.51 1.7 1.7 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .33-1.82 1.7 1.7 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.68a1.7 1.7 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></g></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="2"/><circle cx="15.5" cy="12" r="2"/><circle cx="10" cy="17" r="2"/></g></symbol>
+    <symbol id="icon-reports" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l5 5V20a1.2 1.2 0 0 1-1.2 1.2H7A1.2 1.2 0 0 1 5.8 20V4.7A1.2 1.2 0 0 1 7 3.5z"/><path d="M14 3.5v5h5"/><path d="M9 13h6M9 16.5h6"/></g></symbol>
+  </svg>
   <header class="topbar">
     <div class="brand">
       <span class="logo">📈</span>
@@ -44,72 +63,72 @@
     <nav id="side-groups" class="side-groups">
       <section class="nav-group has-active" data-group="daily" id="nav-group-daily">
         <button type="button" class="nav-group-toggle" aria-expanded="true" title="日常">
-          <span class="nav-glyph" aria-hidden="true">常</span>
+          <span class="nav-glyph" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-daily"></use></svg></span>
           <span class="nav-group-label">日常</span>
         </button>
         <div class="nav-group-items">
           <button type="button" class="tab active" data-tab="overview" title="总览" aria-current="page">
-            <span class="tab-icon" aria-hidden="true">览</span><span class="tab-label">总览</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-overview"></use></svg></span><span class="tab-label">总览</span>
           </button>
           <button type="button" class="tab" data-tab="market" title="行情">
-            <span class="tab-icon" aria-hidden="true">情</span><span class="tab-label">行情</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-market"></use></svg></span><span class="tab-label">行情</span>
           </button>
           <button type="button" class="tab" data-tab="analysis" title="统计">
-            <span class="tab-icon" aria-hidden="true">统</span><span class="tab-label">统计</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-analysis"></use></svg></span><span class="tab-label">统计</span>
           </button>
         </div>
       </section>
       <section class="nav-group" data-group="analysis" id="nav-group-analysis">
         <button type="button" class="nav-group-toggle" aria-expanded="true" title="分析">
-          <span class="nav-glyph" aria-hidden="true">析</span>
+          <span class="nav-glyph" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-analysis-group"></use></svg></span>
           <span class="nav-group-label">分析</span>
         </button>
         <div class="nav-group-items">
           <button type="button" class="tab" data-tab="backtest" title="回测">
-            <span class="tab-icon" aria-hidden="true">测</span><span class="tab-label">回测</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-backtest"></use></svg></span><span class="tab-label">回测</span>
           </button>
           <button type="button" class="tab" data-tab="lab" title="策略实验室">
-            <span class="tab-icon" aria-hidden="true">策</span><span class="tab-label">策略实验室</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-lab"></use></svg></span><span class="tab-label">策略实验室</span>
           </button>
           <button type="button" class="tab" data-tab="scan" title="市场摘选">
-            <span class="tab-icon" aria-hidden="true">摘</span><span class="tab-label">市场摘选</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-scan"></use></svg></span><span class="tab-label">市场摘选</span>
           </button>
           <button type="button" class="tab" data-tab="predict" title="AI 预测">
-            <span class="tab-icon" aria-hidden="true">预</span><span class="tab-label">AI 预测</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-predict"></use></svg></span><span class="tab-label">AI 预测</span>
           </button>
         </div>
       </section>
       <section class="nav-group" data-group="trade" id="nav-group-trade">
         <button type="button" class="nav-group-toggle" aria-expanded="true" title="交易">
-          <span class="nav-glyph" aria-hidden="true">交</span>
+          <span class="nav-glyph" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trade"></use></svg></span>
           <span class="nav-group-label">交易</span>
         </button>
         <div class="nav-group-items">
           <button type="button" class="tab" data-tab="trades" title="交易持仓">
-            <span class="tab-icon" aria-hidden="true">仓</span><span class="tab-label">交易持仓</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trades"></use></svg></span><span class="tab-label">交易持仓</span>
           </button>
           <button type="button" class="tab" data-tab="write" title="录入交易">
-            <span class="tab-icon" aria-hidden="true">录</span><span class="tab-label">录入交易</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-write"></use></svg></span><span class="tab-label">录入交易</span>
           </button>
           <button type="button" class="tab" data-tab="alerts" title="预警">
-            <span class="tab-icon" aria-hidden="true">警</span><span class="tab-label">预警</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-alerts"></use></svg></span><span class="tab-label">预警</span>
           </button>
           <button type="button" class="tab" data-tab="paper" title="模拟盘">
-            <span class="tab-icon" aria-hidden="true">模</span><span class="tab-label">模拟盘</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-paper"></use></svg></span><span class="tab-label">模拟盘</span>
           </button>
         </div>
       </section>
       <section class="nav-group" data-group="system" id="nav-group-system">
         <button type="button" class="nav-group-toggle" aria-expanded="true" title="系统">
-          <span class="nav-glyph" aria-hidden="true">系</span>
+          <span class="nav-glyph" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-system"></use></svg></span>
           <span class="nav-group-label">系统</span>
         </button>
         <div class="nav-group-items">
           <button type="button" class="tab" data-tab="settings" title="设置">
-            <span class="tab-icon" aria-hidden="true">设</span><span class="tab-label">设置</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-settings"></use></svg></span><span class="tab-label">设置</span>
           </button>
           <button type="button" class="tab" data-tab="reports" title="报告">
-            <span class="tab-icon" aria-hidden="true">报</span><span class="tab-label">报告</span>
+            <span class="tab-icon" aria-hidden="true"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-reports"></use></svg></span><span class="tab-label">报告</span>
           </button>
         </div>
       </section>

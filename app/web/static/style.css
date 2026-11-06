@@ -54,9 +54,17 @@ h2 { font-size: 15px; margin: 0; font-weight: 600; }
 .nav-group.is-collapsed .nav-group-toggle::after { content: '▸'; }
 .nav-group-items { display: flex; flex-direction: column; gap: 2px; padding-left: 6px; }
 .nav-group.is-collapsed .nav-group-items { display: none; }
-.nav-glyph, .tab-icon, .side-toggle-icon {
+.side-toggle-icon {
   width: 22px; flex: 0 0 22px; text-align: center; font-size: 13px; line-height: 1;
 }
+/* 展开侧栏只显示中文标签；图标仅在 body.side-rail 与窄屏轨里出现。 */
+.nav-glyph, .tab-icon { display: none; }
+.nav-icon {
+  width: 20px; height: 20px; display: block;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
+}
+.nav-icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .side-toggle-label-rail, .side-toggle-icon-rail { display: none; }
 .tabs-note { color: var(--dim); font-size: 11px; line-height: 1.45; margin: 12px 8px 0; margin-top: auto; }
 
@@ -370,6 +378,11 @@ body.side-rail .side-toggle-label-rail,
 body.side-rail .side-toggle-icon-expanded,
 body.side-rail .nav-group-toggle::after { display: none; }
 body.side-rail .side-toggle-icon-rail { display: inline; }
+body.side-rail .nav-glyph,
+body.side-rail .tab-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 22px;
+}
 body.side-rail .nav-group-items { padding-left: 0; }
 body.side-rail .side-toggle,
 body.side-rail .nav-group-toggle,
@@ -384,6 +397,8 @@ body.side-rail .side-nav .tab { justify-content: center; gap: 0; padding-left: 0
   body:not(.side-expanded) .side-toggle-icon-expanded,
   body:not(.side-expanded) .nav-group-toggle::after { display: none; }
   body:not(.side-expanded) .side-toggle-icon-rail { display: inline; }
+  body:not(.side-expanded) .nav-glyph,
+  body:not(.side-expanded) .tab-icon { display: flex; align-items: center; justify-content: center; }
   body:not(.side-expanded) .nav-group-items { padding-left: 0; }
   body:not(.side-expanded) .side-toggle,
   body:not(.side-expanded) .nav-group-toggle,
