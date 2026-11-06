@@ -344,6 +344,9 @@ button.report-item { width: 100%; text-align: left; cursor: pointer; font: inher
   border-radius: 10px; padding: 16px; }
 .report-json-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
 .report-json h3 { margin: 16px 0 8px; font-size: 14px; }
+.today-digest-head { align-items: center; }
+#today-digest-open { margin-left: auto; padding: 6px 12px; font-size: 13px; }
+.today-digest h3:first-child { margin-top: 0; }
 .vol-mini { display: flex; align-items: stretch; gap: 8px; height: 84px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   padding: 8px 10px; }
