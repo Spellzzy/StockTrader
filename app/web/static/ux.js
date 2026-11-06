@@ -1,5 +1,6 @@
 /* UX 增强层：toast / 超时取消 / 慢任务缓存 / 骨架屏 / 表格工具条 /
-   空状态引导 / 通用代码选择器 / 自动刷新 / 命令面板 / 记住上次 tab
+   空状态引导 / 通用代码选择器 / 自动刷新 / 命令面板 / 记住上次 tab /
+   左侧分组导航的展开态与组折叠
 
    必须在 app.js 之后、p1.js 与 p2.js 之前加载：p1/p2 从 window.ST
    解构公共能力，这里覆盖后它们拿到的就是增强版。
@@ -730,19 +731,127 @@
   document.querySelectorAll('.confirm[data-gate] input[type=checkbox]').forEach(box =>
     box.addEventListener('change', syncConfirmGates));
 
-  /* 横向滚动的 tab 栏：让当前项始终可见 */
+  /* 侧栏：宽屏默认展开，窄于 960px 默认图标轨。用户手动选择写入 st.side，
+     组折叠写入 st.nav.groups。两者都不动 st.tab / st.density。 */
+  const NAV_GROUP_IDS = ['daily', 'analysis', 'trade', 'system'];
+  const NARROW_MQ = '(max-width: 959px)';
+
+  function readGroupMap() {
+    try {
+      const raw = LS.getItem('st.nav.groups');
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      return parsed;
+    } catch (e) { return {}; }
+  }
+  function narrowViewport() {
+    try {
+      return !!(window.matchMedia && window.matchMedia(NARROW_MQ).matches);
+    } catch (e) { return false; }
+  }
+  function explicitExpanded() {
+    if (!document.body) return null;
+    if (document.body.classList.contains('side-expanded')) return true;
+    if (document.body.classList.contains('side-rail')) return false;
+    return null;
+  }
+  function syncToggleButton(expanded) {
+    const btn = $('side-toggle');
+    if (!btn) return;
+    if (btn.setAttribute) btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    btn.title = expanded ? '收起导航' : '展开导航';
+  }
+  function applySide(expanded, persist) {
+    if (!document.body) return;
+    document.body.classList.toggle('side-expanded', !!expanded);
+    document.body.classList.toggle('side-rail', !expanded);
+    syncToggleButton(!!expanded);
+    if (persist) {
+      try { LS.setItem('st.side', expanded ? 'expanded' : 'rail'); } catch (e) { /* ignore */ }
+    }
+  }
+  function applyGroupMap(map) {
+    NAV_GROUP_IDS.forEach(id => {
+      const el = document.getElementById('nav-group-' + id);
+      if (!el) return;
+      const collapsed = !!map[id];
+      el.classList.toggle('is-collapsed', collapsed);
+      const toggle = el.querySelector && el.querySelector('.nav-group-toggle');
+      if (toggle && toggle.setAttribute) {
+        toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      }
+    });
+  }
+  function setGroupCollapsed(id, collapsed) {
+    if (NAV_GROUP_IDS.indexOf(id) === -1) return;
+    const map = readGroupMap();
+    if (collapsed) map[id] = true;
+    else delete map[id];
+    try { LS.setItem('st.nav.groups', JSON.stringify(map)); } catch (e) { /* ignore */ }
+    applyGroupMap(map);
+  }
+  function restoreNav() {
+    let side = null;
+    try { side = LS.getItem('st.side'); } catch (e) { /* ignore */ }
+    if (side === 'expanded') applySide(true, false);
+    else if (side === 'rail') applySide(false, false);
+    else syncToggleButton(!narrowViewport());
+    applyGroupMap(readGroupMap());
+  }
+  function markActiveGroup() {
+    document.querySelectorAll('.nav-group').forEach(group => {
+      const on = !!(group.querySelector && group.querySelector('.tab.active'));
+      group.classList.toggle('has-active', on);
+    });
+  }
+  ST.nav = {
+    setExpanded(on) { applySide(!!on, true); },
+    setGroupCollapsed(id, collapsed) { setGroupCollapsed(id, !!collapsed); },
+    restore: restoreNav,
+  };
+
+  const sideToggle = $('side-toggle');
+  if (sideToggle) {
+    sideToggle.addEventListener('click', () => {
+      const explicit = explicitExpanded();
+      const next = explicit === null ? narrowViewport() : !explicit;
+      applySide(next, true);
+    });
+  }
+  document.querySelectorAll('.nav-group-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const group = btn.closest && btn.closest('.nav-group');
+      const id = group && group.dataset && group.dataset.group;
+      if (!id) return;
+      setGroupCollapsed(id, !group.classList.contains('is-collapsed'));
+    });
+  });
+  if (window.matchMedia) {
+    try {
+      const mq = window.matchMedia(NARROW_MQ);
+      const onChange = () => { if (explicitExpanded() === null) syncToggleButton(!narrowViewport()); };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+    } catch (e) { /* 宿主没有 matchMedia 时沿用宽屏默认 */ }
+  }
+
+  /* 侧栏里让当前页保持在可视区域（组很长或刚展开时） */
   function scrollActiveTabIntoView() {
     const btn = document.querySelector('.tab.active');
-    const bar = document.querySelector('.tabs');
+    const bar = $('side-nav');
     if (!btn || !bar || !btn.scrollIntoView) return;
-    const left = btn.offsetLeft || 0, right = left + (btn.offsetWidth || 0);
-    if (left < bar.scrollLeft || right > bar.scrollLeft + bar.clientWidth) {
-      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    const top = btn.offsetTop || 0;
+    const bottom = top + (btn.offsetHeight || btn.offsetWidth || 0);
+    const viewTop = bar.scrollTop || 0;
+    const viewBottom = viewTop + (bar.clientHeight || bar.clientWidth || 0);
+    if (top < viewTop || bottom > viewBottom) {
+      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     }
   }
 
   document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
     try { LS.setItem('st.tab', btn.dataset.tab); } catch (e) { /* ignore */ }
+    markActiveGroup();
     scrollActiveTabIntoView();
   }));
   function initAfterDom() {
@@ -753,12 +862,14 @@
       compact = LS.getItem('st.density') === 'compact';
     } catch (e) { /* ignore */ }
     applyDensity(compact);
+    restoreNav();
     syncConfirmGates();
     syncToTop();
     if (saved && document.querySelector('.tab[data-tab="' + saved + '"]')) {
       goTab(saved);
       scrollActiveTabIntoView();
     }
+    markActiveGroup();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initAfterDom);

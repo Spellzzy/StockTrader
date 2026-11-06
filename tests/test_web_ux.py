@@ -134,7 +134,7 @@ def test_layout_and_interaction_wiring():
     """布局偏好与操作手感的控件、逻辑、样式三者都要接线"""
     html = client.get("/").text
     for marker in ("density-compact", "to-top", "data-enter=", "data-gate=",
-                   "tab-group-start", "w-amount", "pos-amount"):
+                   "side-nav", "w-amount", "pos-amount"):
         assert marker in html, f"index.html 缺少 {marker}"
 
     ux = client.get("/static/ux.js").text
@@ -173,6 +173,78 @@ def test_cache_policy_and_training_invalidation():
     p1 = client.get("/static/p1.js").text
     assert "ST.invalidate('/api/predict?')" in p1
     assert "await checkModelStatus();" in p1
+
+
+NAV_GROUPS = {
+    "daily": ["overview", "market", "analysis"],
+    "analysis": ["backtest", "lab", "scan", "predict"],
+    "trade": ["trades", "write", "alerts", "paper"],
+    "system": ["settings", "reports"],
+}
+
+
+def _nav_group_html(html, group):
+    match = re.search(
+        rf'<section class="nav-group(?: has-active)?" data-group="{group}"[\s\S]*?</section>',
+        html,
+    )
+    assert match, f"侧栏缺少分组 {group}"
+    return match.group(0)
+
+
+def test_sidebar_replaces_horizontal_tabs():
+    """13 个横 tab 换成左侧四组导航，data-tab 与 panel id 保持不变"""
+    html = client.get("/").text
+    assert 'class="tabs"' not in html
+    assert "tab-group-start" not in html
+    assert 'id="side-nav"' in html
+    assert 'id="side-toggle"' in html
+    assert 'class="app-shell"' in html
+
+    head, side, _rest = html.partition('id="side-nav"')
+    for marker in ('class="brand"', 'id="status"', 'id="last-update"',
+                   'id="auto-refresh"', 'id="density-compact"',
+                   'id="refresh"', 'id="cmd-open"'):
+        assert marker in head, f"顶栏缺少 {marker}"
+        assert marker not in side.split("<main", 1)[0]
+
+    ordered = []
+    for group, tabs in NAV_GROUPS.items():
+        block = _nav_group_html(html, group)
+        found = re.findall(r'data-tab="([^"]+)"', block)
+        assert found == tabs, f"{group} 的 data-tab 顺序应为 {tabs}，实际 {found}"
+        toggle = re.search(r'<button[^>]*class="([^"]*)"[^>]*>', block)
+        assert toggle and "nav-group-toggle" in toggle.group(1)
+        assert "tab" not in toggle.group(1).split()
+        ordered.extend(tabs)
+    assert ordered == re.findall(r'data-tab="([^"]+)"', html)
+    for tab in ordered:
+        assert html.count(f'data-tab="{tab}"') == 1
+        assert f'id="panel-{tab}"' in html
+    assert 'data-tab="overview"' in html and 'aria-current="page"' in html
+    assert 'class="tab active"' in html
+
+
+def test_sidebar_state_is_separate_from_density():
+    """组折叠与侧栏展开写入自己的 localStorage；紧凑密度仍只作用于主区"""
+    ux = client.get("/static/ux.js").text
+    for marker in ("st.side", "st.nav.groups", "ST.nav", "setGroupCollapsed",
+                   "959px", "side-toggle", "scrollActiveTabIntoView", "goTab"):
+        assert marker in ux, f"ux.js 缺少 {marker}"
+    assert "st.density" in ux
+
+    app_js = client.get("/static/app.js").text
+    assert "dataset.tab" in app_js
+    assert "'panel-' +" in app_js or '"panel-" +' in app_js
+    assert "aria-current" in app_js
+
+    css = client.get("/static/style.css").text
+    for marker in (".side-nav", "side-rail", "side-expanded", "959px",
+                   ".nav-group.is-collapsed", ".tab.active"):
+        assert marker in css, f"style.css 缺少 {marker}"
+    assert ".tabs {" not in css
+    assert "tab-group-start" not in css
+    assert "density-compact .tab" not in css
 
 
 def test_static_version_changes_with_file(monkeypatch, tmp_path):
