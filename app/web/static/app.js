@@ -142,6 +142,22 @@ function reportBadge(kind) {
   return '<span class="badge">MD</span>';
 }
 
+function finiteNumber(v) {
+  if (typeof v === 'boolean' || typeof v !== 'number' || !Number.isFinite(v)) return null;
+  return v;
+}
+
+/* quality 上有可用数字就用它；显式 null 才回落到条目。非空的坏值不回落，避免编造。 */
+function preferQualityNumber(quality, item, key) {
+  if (quality && Object.prototype.hasOwnProperty.call(quality, key)) {
+    const fromQuality = finiteNumber(quality[key]);
+    if (fromQuality !== null) return fromQuality;
+    if (quality[key] != null) return null;
+  }
+  if (item && Object.prototype.hasOwnProperty.call(item, key)) return finiteNumber(item[key]);
+  return null;
+}
+
 function qualityPreviewText(q) {
   if (!q || typeof q !== 'object' || Array.isArray(q)) return '';
   const bits = [];
@@ -161,6 +177,113 @@ function qualityPreviewText(q) {
   return bits.join(' · ');
 }
 
+function digestSnapshot(item) {
+  const src = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+  const snap = {
+    code: src.code == null ? '' : String(src.code),
+    name: src.name == null ? '' : String(src.name),
+    signal: src.signal,
+    score: src.score,
+    stars: src.stars,
+    confidence: src.confidence,
+    models_used: src.models_used,
+    key_factors: Array.isArray(src.key_factors) ? src.key_factors.slice() : [],
+  };
+  if (Object.prototype.hasOwnProperty.call(src, 'quality')) snap.quality = src.quality;
+  return snap;
+}
+
+function formatCount(n) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+function signed1(n) {
+  const text = n.toFixed(1);
+  if (n > 0) return '+' + text;
+  if (n === 0) return '+0.0';
+  return text;
+}
+
+/* 抽屉「可信证据」只吃行快照。缺数字就省略该行，不现场重算。 */
+function renderDigestEvidence(item) {
+  const snapshot = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+  const q = snapshot.quality;
+  const valid = !!q && typeof q === 'object' && !Array.isArray(q);
+  if (!valid) {
+    return '<section class="digest-evidence" aria-label="可信证据">'
+      + '<h3>可信证据</h3><div class="dim">本条无质量字段</div></section>';
+  }
+  const below = q.below_baseline === true;
+  const noteRaw = typeof q.note === 'string' ? q.note.trim() : '';
+  const note = noteRaw || (below ? '弱于基线，勿当强信号' : '质量正常');
+  const rows = [];
+  const signalBits = [];
+  if (typeof snapshot.signal === 'string' && snapshot.signal.trim()) {
+    signalBits.push(snapshot.signal.trim());
+  }
+  const score = finiteNumber(snapshot.score);
+  if (score !== null) signalBits.push('评分 ' + signed1(score));
+  const stars = finiteNumber(snapshot.stars);
+  if (stars !== null && stars > 0) {
+    const count = Math.min(5, Math.floor(stars));
+    if (count > 0) signalBits.push('⭐'.repeat(count));
+  }
+  if (signalBits.length) rows.push(['信号', signalBits.join(' · ')]);
+  if (q.below_baseline === true) rows.push(['质量', '弱于基线']);
+  else if (q.below_baseline === false) rows.push(['质量', '优于基线']);
+  rows.push(['说明', note]);
+  const acc = finiteNumber(q.mean_accuracy);
+  const base = finiteNumber(q.baseline);
+  if (acc !== null && base !== null) {
+    rows.push(['准确率 · 基线', `${(acc * 100).toFixed(1)}% · ${(base * 100).toFixed(1)}%`]);
+  } else if (acc !== null) {
+    rows.push(['准确率', `${(acc * 100).toFixed(1)}%`]);
+  } else if (base !== null) {
+    rows.push(['基线', `${(base * 100).toFixed(1)}%`]);
+  }
+  const factor = finiteNumber(q.factor);
+  if (factor !== null) rows.push(['降权', factor.toFixed(2)]);
+  const conf = preferQualityNumber(q, snapshot, 'confidence');
+  if (conf !== null) rows.push(['置信度', conf.toFixed(1) + '%']);
+  const models = preferQualityNumber(q, snapshot, 'models_used');
+  if (models !== null) rows.push(['模型数', formatCount(models)]);
+  const factors = Array.isArray(snapshot.key_factors) ? snapshot.key_factors : [];
+  const shown = [];
+  for (let i = 0; i < factors.length && shown.length < 3; i++) {
+    const text = String(factors[i] == null ? '' : factors[i]).trim();
+    if (text) shown.push(text);
+  }
+  if (shown.length) rows.push(['依据', shown.join('、')]);
+  const kv = '<div class="detail-kv">' + rows.map(([k, v]) =>
+    `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('') + '</div>';
+  const body = below ? `<div class="quality-warn">${kv}</div>` : kv;
+  return `<section class="digest-evidence" aria-label="可信证据"><h3>可信证据</h3>${body}</section>`;
+}
+
+function eventEl(target) {
+  if (!target) return null;
+  if (target.nodeType === 3) return target.parentElement || null;
+  return target;
+}
+
+function readRowEvidence(row) {
+  if (!row) return null;
+  let raw = '';
+  if (typeof row.getAttribute === 'function') raw = row.getAttribute('data-evidence') || '';
+  if (!raw && row.dataset) raw = row.dataset.evidence || '';
+  if (!raw) return null;
+  try { return JSON.parse(decodeURIComponent(raw)); }
+  catch (e) { return null; }
+}
+
+function activateDigestEvidenceRow(row) {
+  if (!row || !window.ST || typeof window.ST.openStockDetail !== 'function') return;
+  const evidence = readRowEvidence(row) || {};
+  const code = String(evidence.code || (row.dataset && row.dataset.code) || '').trim();
+  if (!code) return;
+  window.ST.openStockDetail(code, { evidence });
+}
+
 function digestRows(items) {
   const rows = Array.isArray(items) ? items : [];
   if (!rows.length) return '<div class="dim">无</div>';
@@ -173,9 +296,18 @@ function digestRows(items) {
       ? (quality ? ' · ' : '') + '模型数 ' + (Number.isInteger(models) ? String(models) : models.toFixed(2))
       : '';
     const score = Number(item && item.score);
-    return `<tr>
-      <td>${esc(item && item.code)}</td>
-      <td>${esc(item && item.name)}</td>
+    const snap = digestSnapshot(item);
+    const label = '查看'
+      + (snap.code ? ' ' + snap.code : '')
+      + (snap.name ? ' ' + snap.name : '')
+      + ' 的可信证据';
+    return `<tr class="clickable digest-evidence-row" role="button" tabindex="0"
+      data-code="${esc(snap.code)}"
+      data-evidence="${encodeURIComponent(JSON.stringify(snap))}"
+      aria-label="${esc(label)}"
+      title="点击、回车或空格打开个股详情中的可信证据">
+      <td>${esc(snap.code)}</td>
+      <td>${esc(snap.name)}</td>
       <td>${esc(item && item.signal)}</td>
       <td class="num">${Number.isFinite(score) ? score.toFixed(1) : '-'}</td>
       <td class="num">${typeof conf === 'number' ? conf.toFixed(1) + '%' : '-'}</td>
@@ -303,7 +435,7 @@ const loaders = { overview: loadOverview, market: loadQuotes, reports: loadRepor
 
 window.ST = {
   $, api, post, fmt, signed, cls, esc, emptyRow, card, sparkline,
-  setStatus, showError, clearError,
+  setStatus, showError, clearError, renderDigestEvidence, activateDigestEvidenceRow,
   finite(v, digits = 2) {
     const n = Number(v);
     return Number.isFinite(n) ? fmt(n, digits) : '-';
@@ -357,6 +489,21 @@ $('quote-btn').addEventListener('click', () => refreshSafe(loadQuotes));
 $('kline-btn').addEventListener('click', () => refreshSafe(loadKline));
 $('codes').addEventListener('keydown', e => { if (e.key === 'Enter') refreshSafe(loadQuotes); });
 $('kline-code').addEventListener('keydown', e => { if (e.key === 'Enter') refreshSafe(loadKline); });
+
+document.addEventListener('click', e => {
+  const row = eventEl(e.target);
+  const digestRow = row && row.closest && row.closest('tr.digest-evidence-row');
+  if (!digestRow) return;
+  activateDigestEvidenceRow(digestRow);
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const row = eventEl(e.target);
+  const digestRow = row && row.closest && row.closest('tr.digest-evidence-row');
+  if (!digestRow) return;
+  if (e.preventDefault) e.preventDefault();
+  activateDigestEvidenceRow(digestRow);
+});
 
 async function refreshSafe(fn) {
   clearError();

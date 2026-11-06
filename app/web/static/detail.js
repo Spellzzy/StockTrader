@@ -2,7 +2,8 @@
 
    只读视图：一次 GET /api/stock/detail 聚合实时报价、60 日走势、轻量技术指标、
    本股自选/持仓/预警/最近交易；公司资料按需单独加载。
-   入口：表格代码列、代码输入框「详情」按钮、命令面板、URL #stock=xxx。
+   入口：表格代码列、代码输入框「详情」按钮、命令面板、URL #stock=xxx，
+   以及报告页 JSON 日报行（可带上该行快照，只渲染「可信证据」，不另请求质量）。
    最后加载；通过 window.ST.openStockDetail 暴露给 ux.js。 */
 
 (() => {
@@ -11,6 +12,22 @@
   const signed = ST.signed, cls = ST.cls, card = ST.card;
   let currentCode = '';
   let currentData = null;
+  let currentEvidence = null;
+
+  function showEvidence(snapshot) {
+    const el = $('detail-evidence');
+    if (!el) return;
+    if (!snapshot) {
+      currentEvidence = null;
+      el.innerHTML = '';
+      el.classList.add('hidden');
+      return;
+    }
+    currentEvidence = snapshot;
+    el.classList.remove('hidden');
+    el.innerHTML = typeof ST.renderDigestEvidence === 'function'
+      ? ST.renderDigestEvidence(snapshot) : '';
+  }
 
   const num = (v, digits = 2) => (v === null || v === undefined ? '-' : fmt(v, digits));
 
@@ -518,11 +535,13 @@
     kline: loadKline, fund: loadFund, news: loadNews, profile: () => loadProfile(),
   };
 
-  async function open(code) {
+  async function open(code, options) {
     code = String(code || '').trim();
     if (!code) return;
     currentCode = code;
     currentData = null;
+    const hasEvidence = !!(options && Object.prototype.hasOwnProperty.call(options, 'evidence'));
+    showEvidence(hasEvidence ? options.evidence : null);
     $('stock-detail').classList.remove('hidden');
     $('detail-title').textContent = code;
     $('detail-sub').textContent = '加载中…';
@@ -544,6 +563,7 @@
   function close() {
     $('stock-detail').classList.add('hidden');
     currentCode = '';
+    showEvidence(null);
     try {
       if (location.hash.indexOf('#stock=') === 0) {
         history.replaceState(null, '', location.pathname);
@@ -644,7 +664,9 @@
   $('stock-detail').addEventListener('click', e => {
     if (e.target.id === 'stock-detail') close();
   });
-  $('detail-refresh').addEventListener('click', () => open(currentCode));
+  $('detail-refresh').addEventListener('click', () => {
+    open(currentCode, currentEvidence ? { evidence: currentEvidence } : undefined);
+  });
   $('detail-profile').addEventListener('click', () => switchPane('profile'));
   $('detail-goto-market').addEventListener('click', () => goto('market', ['codes', 'kline-code']));
   $('detail-goto-predict').addEventListener('click', () => goto('predict', ['predict-code']));

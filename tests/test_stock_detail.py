@@ -346,3 +346,20 @@ def test_frontend_detail_page_is_wired(client):
 
     css = client.get("/static/style.css").text
     assert ".detail-drawer" in css and "td.stock-link" in css
+
+
+def test_digest_evidence_drawer_is_wired(client):
+    """JSON 日报行进抽屉可信证据：页面有证据槽，脚本只消费行快照。"""
+    html = client.get("/").text
+    assert 'id="detail-evidence"' in html
+    app_js = client.get("/static/app.js").text
+    assert "function renderDigestEvidence" in app_js
+    assert "function activateDigestEvidenceRow" in app_js
+    assert "digest-evidence-row" in app_js
+    assert "本条无质量字段" in app_js
+    assert "pre.textContent = String(d.content" in app_js
+    detail_js = client.get("/static/detail.js").text
+    assert "detail-evidence" in detail_js
+    assert "/api/stock/detail" in detail_js
+    ux_js = client.get("/static/ux.js").text
+    assert "tr.digest-evidence-row" in ux_js

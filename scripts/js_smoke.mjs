@@ -326,6 +326,9 @@ for (const line of credibility.split("\n")) {
   if (!shown.includes(line)) throw new Error("可信度卡片原文丢失: " + line);
 }
 if (shown !== digestBody) throw new Error("Markdown 正文被改写，未按原文展示");
+if (String(shown).includes("digest-evidence-row") || String(shown).includes("可信证据")) {
+  throw new Error("Markdown 报告不应新增点行进可信证据的入口");
+}
 
 const jsonItem = listHtml.match(new RegExp(`<button\\b[^>]*>[\\s\\S]*?${jsonName}[\\s\\S]*?</button>`));
 if (!jsonItem) throw new Error("报告列表未渲染 JSON");
@@ -349,6 +352,321 @@ if (jsonMarkup.includes("<textarea") || jsonMarkup.includes("contenteditable") |
 }
 globalThis.fetch = origFetch;
 console.log("  报告页 Markdown 原文 / JSON 结构化预览 / HTML 新标签行为断言 OK");
+
+/* 日报 JSON 行绑定快照，点击 / 回车 / 空格打开抽屉「可信证据」。
+   有 quality 时数字与该行一致；无 quality 只显示占位，且不请求预测/质量接口。 */
+function snapshotsFromMarkup(html) {
+  const found = [];
+  const re = /data-evidence="([^"]*)"/g;
+  let match;
+  while ((match = re.exec(html))) found.push(JSON.parse(decodeURIComponent(match[1])));
+  return found;
+}
+if (typeof globalThis.renderDigestPreview !== "function") {
+  throw new Error("app.js 未暴露 renderDigestPreview");
+}
+if (typeof ST.renderDigestEvidence !== "function") {
+  throw new Error("未暴露 renderDigestEvidence");
+}
+if (typeof ST.activateDigestEvidenceRow !== "function") {
+  throw new Error("未暴露 activateDigestEvidenceRow");
+}
+
+const richDigest = {
+  date: "2026-11-06 09:30",
+  slot: "am",
+  total: 3,
+  bullish: [{
+    code: "sh600519",
+    name: "茅台",
+    signal: "看涨",
+    score: 12.5,
+    stars: 2,
+    confidence: 80,
+    models_used: 9,
+    key_factors: ["动量", "放量", "北向", "第四条不应出现"],
+    quality: {
+      below_baseline: true,
+      mean_accuracy: 0.273,
+      baseline: 0.333,
+      factor: 0.4,
+      note: "样本偏弱",
+      confidence: 12.5,
+      models_used: 3,
+    },
+  }],
+  bearish: [{
+    code: "sz000001",
+    name: "平安",
+    signal: "看跌",
+    score: -1.5,
+    stars: 1,
+    confidence: 40,
+    key_factors: ["破位"],
+  }],
+  neutral: [{
+    code: "sz000002",
+    name: "坏质量",
+    signal: "震荡",
+    score: 0.2,
+    quality: "nope",
+  }],
+};
+const richHtml = globalThis.renderDigestPreview("digest.json", richDigest).innerHTML;
+const richSnaps = snapshotsFromMarkup(richHtml);
+if (richSnaps.length !== 3) {
+  throw new Error("看涨/看跌/震荡行都应绑定快照，实际 " + richSnaps.length);
+}
+const bullSnap = richSnaps[0];
+if (bullSnap.code !== "sh600519" || bullSnap.signal !== "看涨" || bullSnap.score !== 12.5
+    || bullSnap.stars !== 2 || bullSnap.confidence !== 80 || bullSnap.models_used !== 9) {
+  throw new Error("行快照未带上信号、评分、星级、置信度或模型数");
+}
+if (!Array.isArray(bullSnap.key_factors) || bullSnap.key_factors[0] !== "动量") {
+  throw new Error("行快照未带上 key_factors");
+}
+if (!bullSnap.quality || bullSnap.quality.mean_accuracy !== 0.273
+    || bullSnap.quality.baseline !== 0.333 || bullSnap.quality.factor !== 0.4
+    || bullSnap.quality.below_baseline !== true || bullSnap.quality.note !== "样本偏弱"
+    || bullSnap.quality.confidence !== 12.5 || bullSnap.quality.models_used !== 3) {
+  throw new Error("行快照的 quality 与该行不一致");
+}
+if (richSnaps[1].quality !== undefined) {
+  throw new Error("无 quality 的行不应编造质量对象");
+}
+if (richSnaps[2].quality !== "nope") {
+  throw new Error("非对象 quality 应原样绑在快照上，而不是当成合法质量");
+}
+if (!richHtml.includes('class="clickable digest-evidence-row"')
+    || !richHtml.includes('role="button"') || !richHtml.includes('tabindex="0"')) {
+  throw new Error("结构化行应可点击且可聚焦");
+}
+for (const hint of ["查看 sh600519 茅台 的可信证据", "回车或空格"]) {
+  if (!richHtml.includes(hint)) throw new Error("行缺少可访问提示: " + hint);
+}
+const previewSnaps = snapshotsFromMarkup(jsonMarkup);
+const previewBull = previewSnaps.find((item) => item.code === "sh600519");
+const previewNeutral = previewSnaps.find((item) => item.code === "sz000001");
+if (!previewBull || previewBull.quality.factor !== 0.4 || previewBull.quality.mean_accuracy !== 0.273) {
+  throw new Error("已打开的 JSON 预览没有把该行 quality 绑到行上");
+}
+if (!previewNeutral || previewNeutral.quality !== undefined) {
+  throw new Error("已打开的 JSON 预览里，无质量行仍应可点且不编造 quality");
+}
+if ((jsonMarkup.match(/digest-evidence-row/g) || []).length !== 2) {
+  throw new Error("空的看跌区不应生成可点行");
+}
+
+const withQuality = ST.renderDigestEvidence(bullSnap);
+for (const piece of ["可信证据", "质量", "弱于基线", "说明", "样本偏弱", "准确率", "27.3%", "33.3%",
+  "降权", "0.40", "置信度", "12.5%", "模型数", "3", "依据", "动量", "放量", "北向", "quality-warn",
+  "看涨", "+12.5"]) {
+  if (!withQuality.includes(piece)) throw new Error("有质量证据缺少: " + piece);
+}
+if (withQuality.includes("80.0%") || withQuality.includes(">9<") || withQuality.includes("第四条")) {
+  throw new Error("有质量证据用了条目上的置信度/模型数，或依据超过 3 条");
+}
+if (withQuality.includes("模型无预测能力") || withQuality.includes("请勿据此下单")) {
+  throw new Error("证据区不应新增恐吓文案");
+}
+
+const noQuality = ST.renderDigestEvidence(richSnaps[1]);
+if (!noQuality.includes("可信证据") || !noQuality.includes("本条无质量字段")) {
+  throw new Error("无 quality 时应显示占位文案");
+}
+if (noQuality.includes("quality-warn") || noQuality.includes("优于基线") || noQuality.includes("准确率")) {
+  throw new Error("无 quality 时不应渲染质量数字");
+}
+const badQuality = ST.renderDigestEvidence(richSnaps[2]);
+if (!badQuality.includes("本条无质量字段")) throw new Error("非对象 quality 应走占位分支");
+if (!ST.renderDigestEvidence(null).includes("本条无质量字段")) {
+  throw new Error("空快照不应抛错，且应走占位分支");
+}
+
+const strong = ST.renderDigestEvidence({
+  code: "sh600000",
+  signal: "看涨",
+  score: 8.5,
+  stars: 4,
+  confidence: 61,
+  key_factors: ["均线多头", "  ", "放量"],
+  quality: { below_baseline: false, note: "  ", mean_accuracy: 0.5 },
+});
+for (const piece of ["优于基线", "质量正常", "50.0%", "61.0%", "均线多头", "放量"]) {
+  if (!strong.includes(piece)) throw new Error("强质量证据缺少: " + piece);
+}
+if (strong.includes("quality-warn") || strong.includes("降权") || strong.includes("模型数")
+    || strong.includes("勿当强信号") || strong.includes("% ·")) {
+  throw new Error("缺字段被填了数字，或强卡片用了弱提示/恐吓语");
+}
+const onlyBase = ST.renderDigestEvidence({
+  signal: "看跌",
+  quality: { below_baseline: true, baseline: 0.333, note: "" },
+});
+if (!onlyBase.includes("33.3%") || onlyBase.includes("准确率") || !onlyBase.includes("弱于基线，勿当强信号")) {
+  throw new Error("只有基线时不应出现准确率，空说明应使用既有弱默认文案");
+}
+if (!onlyBase.includes("quality-warn")) throw new Error("弱于基线应使用 quality-warn");
+const junk = ST.renderDigestEvidence({
+  confidence: 70,
+  quality: {
+    below_baseline: false,
+    mean_accuracy: "高",
+    baseline: null,
+    factor: true,
+    note: "质量正常",
+    models_used: "两只",
+    confidence: "高",
+  },
+});
+if (junk.includes("准确率") || junk.includes("降权") || junk.includes("模型数") || junk.includes("70.0%")) {
+  throw new Error("非法数字不应回落成编造值");
+}
+if (!junk.includes("质量正常") || !junk.includes("优于基线")) {
+  throw new Error("合法的质量判断和说明仍应保留");
+}
+
+let activated = null;
+const realOpen = ST.openStockDetail;
+ST.openStockDetail = (code, opts) => { activated = { code, opts }; };
+function evidenceRow(snap) {
+  const row = makeElement("digest-row");
+  row.classList.add("digest-evidence-row");
+  row.dataset.code = snap.code || "";
+  row.dataset.evidence = encodeURIComponent(JSON.stringify(snap));
+  row.getAttribute = (name) => {
+    if (name === "data-evidence") return row.dataset.evidence;
+    if (name === "data-code") return row.dataset.code;
+    return null;
+  };
+  row.closest = (sel) => (sel === "tr.digest-evidence-row" ? row : null);
+  return row;
+}
+const bullRow = evidenceRow(bullSnap);
+let keyPrevented = 0;
+document.dispatchEvent({
+  type: "keydown",
+  key: "Enter",
+  target: bullRow,
+  preventDefault() { keyPrevented += 1; },
+});
+if (!activated || activated.code !== "sh600519" || !activated.opts
+    || activated.opts.evidence.quality.mean_accuracy !== 0.273) {
+  throw new Error("回车未带该行快照打开个股详情");
+}
+activated = null;
+document.dispatchEvent({
+  type: "keydown",
+  key: " ",
+  target: bullRow,
+  preventDefault() { keyPrevented += 1; },
+});
+if (!activated || activated.opts.evidence.code !== "sh600519" || keyPrevented !== 2) {
+  throw new Error("空格未带快照打开，或没有阻止页面滚动");
+}
+activated = null;
+document.dispatchEvent({ type: "click", target: bullRow, preventDefault() {}, stopPropagation() {} });
+if (!activated || activated.opts.evidence.quality.factor !== 0.4) {
+  throw new Error("点击行未带该行快照打开个股详情");
+}
+const plainRow = evidenceRow(richSnaps[1]);
+activated = null;
+document.dispatchEvent({ type: "click", target: plainRow, preventDefault() {}, stopPropagation() {} });
+if (!activated || activated.code !== "sz000001" || activated.opts.evidence.quality !== undefined) {
+  throw new Error("无质量行点击后不应编造 quality");
+}
+const linkedCell = makeElement("linked-code");
+linkedCell.classList.add("stock-link");
+linkedCell.dataset.code = "sh600519";
+linkedCell.closest = (sel) => {
+  if (sel === "td.stock-link") return linkedCell;
+  if (sel === "tr.digest-evidence-row") return bullRow;
+  return null;
+};
+activated = null;
+document.dispatchEvent({
+  type: "click",
+  target: linkedCell,
+  preventDefault() {},
+  stopPropagation() {},
+});
+if (!activated || !activated.opts || activated.opts.evidence.quality.factor !== 0.4) {
+  throw new Error("日报行里的代码格也应带上本条快照，而不是普通详情入口");
+}
+ST.openStockDetail = realOpen;
+console.log("  日报行快照绑定与有/无质量证据渲染断言 OK");
+
+const seenDetailUrls = [];
+globalThis.fetch = async (url) => {
+  const u = String(url);
+  seenDetailUrls.push(u);
+  const code = (u.split("code=")[1] || "").split("&")[0];
+  return {
+    ok: true,
+    json: async () => ({
+      ok: true,
+      data: {
+        code: decodeURIComponent(code || ""),
+        name: "详情",
+        generated_at: "2026-11-06T09:30:00",
+        quote: {},
+        kline: [],
+        tech: {},
+        stock: {},
+        holding: null,
+        alert_count: 0,
+        recent_trades: [],
+      },
+    }),
+  };
+};
+await ST.openStockDetail("sh600519", { evidence: bullSnap });
+const evidenceBox = document.getElementById("detail-evidence");
+if (!evidenceBox || evidenceBox.classList.contains("hidden")) {
+  throw new Error("打开带证据的行后，抽屉证据区不可见");
+}
+if (!document.getElementById("stock-detail") || document.getElementById("stock-detail").classList.contains("hidden")) {
+  throw new Error("点击行后个股抽屉未打开");
+}
+for (const piece of ["可信证据", "27.3%", "33.3%", "0.40", "12.5%", "样本偏弱", "quality-warn"]) {
+  if (!evidenceBox.innerHTML.includes(piece)) throw new Error("抽屉证据区与该行质量不一致: " + piece);
+}
+if (seenDetailUrls.some((u) => u.includes("/api/predict") || u.includes("quality"))) {
+  throw new Error("打开证据不应新增预测或质量请求");
+}
+if (!seenDetailUrls.some((u) => u.includes("/api/stock/detail"))) {
+  throw new Error("抽屉仍应加载该代码的既有详情");
+}
+const footIds = ["detail-goto-market", "detail-goto-predict", "detail-goto-write", "detail-refresh"];
+for (const id of footIds) {
+  const btn = document.getElementById(id);
+  if (!btn || !btn._handlers.click || !btn._handlers.click.length) {
+    throw new Error("抽屉脚部按钮不可用: " + id);
+  }
+}
+document.getElementById("detail-refresh").dispatchEvent({ type: "click" });
+await new Promise((r) => setTimeout(r, 40));
+if (!evidenceBox.innerHTML.includes("27.3%") || evidenceBox.innerHTML.includes("本条无质量字段")) {
+  throw new Error("刷新同一只股票不应清掉本条可信证据");
+}
+await ST.openStockDetail("sz000001", { evidence: richSnaps[1] });
+if (!evidenceBox.innerHTML.includes("本条无质量字段") || evidenceBox.innerHTML.includes("27.3%")) {
+  throw new Error("换一条无质量行时，证据区应换成占位且不残留上一只的数字");
+}
+await ST.openStockDetail("sh600000");
+if (evidenceBox.innerHTML.trim() || !evidenceBox.classList.contains("hidden")) {
+  throw new Error("从其它入口打开股票时不应留下日报证据");
+}
+await ST.openStockDetail("sh600519", { evidence: bullSnap });
+ST.closeStockDetail();
+if (evidenceBox.innerHTML.trim() || !evidenceBox.classList.contains("hidden")) {
+  throw new Error("关闭抽屉后应清空可信证据");
+}
+if (!document.getElementById("stock-detail").classList.contains("hidden")) {
+  throw new Error("关闭抽屉失败");
+}
+globalThis.fetch = origFetch;
+console.log("  抽屉可信证据展示、清空与不新增质量请求断言 OK");
 
 /* 个股详情量比：源字段 / 回退值 / 全缺显示「—」，且不顶替 60 日均量倍数 */
 if (typeof ST.detailVolumeRatio !== "function") {
