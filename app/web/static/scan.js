@@ -121,8 +121,48 @@
     }
   }
 
-  function loadResult(run) {
+  /* 自选代码集合：用于把命中表里已收藏的行标成「已自选」，避免重复添加。
+     10 秒短缓存，加自选成功后强制刷新。 */
+  let watchedCache = { at: 0, codes: new Set() };
+
+  async function refreshWatched(force) {
+    if (!force && Date.now() - watchedCache.at < 10000) return;
+    try {
+      const d = await api('/api/code-picker');
+      watchedCache = {
+        at: Date.now(),
+        codes: new Set((d.watchlist || []).map(x => x.code)),
+      };
+    } catch (e) {
+      watchedCache.at = Date.now();   // 失败也缓存，避免每次渲染都重试
+    }
+  }
+
+  async function addWatchFromScan(btn) {
+    const code = btn.dataset.watch;
+    if (!code || btn.disabled) return;
+    if (window.confirm && !window.confirm(`把 ${code} 加入自选？`)) return;
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+    try {
+      await post('/api/write/watchlist', {
+        confirm: true, client_id: newId(), op: 'add', code,
+        note: '市场摘选命中',
+      });
+      btn.textContent = '已自选 ✓';
+      toast('已加入自选：' + code, 'ok');
+      await refreshWatched(true);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = original;
+      showError(String(e.message || e));
+    }
+  }
+
+  async function loadResult(run) {
     if (!run) return;
+    await refreshWatched();
     const cards = [
       card('股票池', esc(String(run.pool || '-'))),
       card('池规模', fmt(run.universe_count || 0, 0)),
@@ -138,12 +178,20 @@
       + String(run.generated_at || '').replace('T', ' ');
 
     const hits = run.hits || [];
-    tableRows($('#scan-hits'), hits.map(h => `<tr>
-      <td>${esc(h.code)}</td><td>${esc(h.name || '')}</td>
-      <td class="num">${fmt(h.price)}</td>
-      <td class="num">${fmt(h.matched_count, 0)}/${fmt(h.total_rules, 0)}</td>
-      <td>${(h.matched || []).map(m => esc(String(m[0]))).join('、')}</td>
-    </tr>`).join(''), 5, '本次没有股票满足当前条件组合');
+    tableRows($('#scan-hits'), hits.map(h => {
+      const owned = watchedCache.codes.has(h.code);
+      return `<tr>
+        <td>${esc(h.code)}</td><td>${esc(h.name || '')}</td>
+        <td class="num">${fmt(h.price)}</td>
+        <td class="num">${fmt(h.matched_count, 0)}/${fmt(h.total_rules, 0)}</td>
+        <td>${(h.matched || []).map(m => esc(String(m[0]))).join('、')}</td>
+        <td><div class="row-actions">
+          <button type="button" class="btn ghost" data-watch="${esc(h.code)}"
+            ${owned ? 'disabled' : ''} title="${owned ? '已在自选中' : '加入自选'}">
+            ${owned ? '已自选' : '+ 自选'}</button>
+        </div></td>
+      </tr>`;
+    }).join(''), 6, '本次没有股票满足当前条件组合');
   }
 
   async function loadLatest() {
@@ -193,7 +241,14 @@
 
   /* 命中表的代码列：全局 linkifyCodes 的捕获委托会 stopPropagation，
      这里只作为兜底，避免表格重渲染后委托时序差异导致点不开详情。 */
-  $('#scan-hits').querySelector('tbody').addEventListener('click', e => {
+  $('#scan-hits').querySelector('tbody').addEventListener('click', async e => {
+    const btn = e.target.closest && e.target.closest('button[data-watch]');
+    if (btn) {
+      // 别让「加自选」冒泡成「打开个股详情」
+      if (e.stopPropagation) e.stopPropagation();
+      await addWatchFromScan(btn);
+      return;
+    }
     const td = e.target.closest && e.target.closest('td.stock-link');
     if (td && td.dataset.code && ST.openStockDetail) {
       ST.openStockDetail(td.dataset.code);

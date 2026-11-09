@@ -289,6 +289,19 @@ def test_frontend_scan_page_is_wired(client):
              ("app.js", "ux.js", "p1.js", "p2.js", "detail.js", "scan.js")]
     assert order == sorted(order)
 
+
+def test_scan_hits_have_quick_add_watchlist(client):
+    """市场摘选命中行要能一键加自选，且沿用 confirm + 幂等键"""
+    html = client.get("/").text
+    assert "<th>操作</th>" in html
+
+    js = client.get("/static/scan.js").text
+    for marker in ("button[data-watch]", "data-watch=", "/api/write/watchlist",
+                   "/api/code-picker", "refreshWatched", "addWatchFromScan",
+                   "confirm: true", "client_id: newId()", "已自选",
+                   "e.stopPropagation()"):
+        assert marker in js, f"scan.js 缺少 {marker}"
+
     js = client.get("/static/scan.js").text
     for marker in ("/api/scan/start", "/api/scan/status", "/api/scan/cancel",
                    "/api/scan/runs", "/api/scan/run/", "/api/scan/config",
