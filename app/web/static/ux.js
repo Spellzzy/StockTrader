@@ -851,7 +851,12 @@
     const viewTop = bar.scrollTop || 0;
     const viewBottom = viewTop + (bar.clientHeight || bar.clientWidth || 0);
     if (top < viewTop || bottom > viewBottom) {
-      btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      // 延后一帧再滚动，避开预览容器注入脚本在加载期测量 DOM 的窗口
+      const run = () => btn.scrollIntoView({
+        behavior: 'smooth', block: 'nearest', inline: 'nearest',
+      });
+      if (window.requestAnimationFrame) window.requestAnimationFrame(run);
+      else run();
     }
   }
 

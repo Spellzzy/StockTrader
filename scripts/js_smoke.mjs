@@ -1025,8 +1025,13 @@ function assertDigestActionClosed(label) {
 }
 
 await globalThis.loadOverview();
-const digestCard = document.getElementById("today-digest").innerHTML;
+const digestCard = document.getElementById("today-digest-content").innerHTML;
 const digestMeta = document.getElementById("today-digest-meta").textContent;
+/* 稳定骨架：顶层容器绝不能被 innerHTML 整体替换（预览 WebView 注入脚本
+   会在加载期测量其子节点，替换后容易拿到 null 并调 getBoundingClientRect）。 */
+if (document.getElementById("today-digest").innerHTML) {
+  throw new Error("今日日报顶层容器不应被直接写入 innerHTML");
+}
 if (digestMeta !== "2026-11-06 15:00 · pm · 9 只 · 震荡 1") {
   throw new Error("总览日报头部应是日期、时段、总数和震荡条数，实际 " + digestMeta);
 }
@@ -1119,7 +1124,7 @@ await globalThis.loadOverview();
 if (!holdingsBody.innerHTML.includes("当前无持仓")) {
   throw new Error("空持仓没有走原有空态");
 }
-if (!document.getElementById("today-digest").innerHTML.includes("看涨1")) {
+if (!document.getElementById("today-digest-content").innerHTML.includes("看涨1")) {
   throw new Error("没有持仓时仍应展示今日日报");
 }
 overviewHoldings = [{
@@ -1166,7 +1171,7 @@ if (fullReport.classList.contains("hidden")) {
 for (const piece of [overviewDigestName, "只读预览", "2026-11-06 15:00", "看涨6", "中性样本", "看跌甲"]) {
   if (!fullPreview.includes(piece)) throw new Error("完整日报预览缺少 " + piece);
 }
-if (document.getElementById("today-digest").innerHTML.includes("看涨6")) {
+if (document.getElementById("today-digest-content").innerHTML.includes("看涨6")) {
   throw new Error("打开完整日报不应把总览放宽到 5 行以上");
 }
 assertNoDigestSideChannel("查看完整日报");
@@ -1176,7 +1181,7 @@ const contentBeforeNone = contentHits();
 reportMode = "none";
 overviewProfit = 77.25;
 await globalThis.loadOverview();
-if (!document.getElementById("today-digest").innerHTML.includes("暂无结构化日报")) {
+if (!document.getElementById("today-digest-empty").textContent.includes("暂无结构化日报")) {
   throw new Error("没有 digest JSON 时应显示空态文案");
 }
 if (!document.getElementById("cards").innerHTML.includes("77.25")) {
@@ -1193,7 +1198,7 @@ if (contentHits() !== contentBeforeNone) {
 reportMode = "content-fail";
 overviewProfit = 66.5;
 await globalThis.loadOverview();
-if (!document.getElementById("today-digest").innerHTML.includes("日报读取失败")) {
+if (!document.getElementById("today-digest-empty").textContent.includes("日报读取失败")) {
   throw new Error("日报内容读取失败时应只在本区块显示失败文案");
 }
 if (!document.getElementById("cards").innerHTML.includes("66.50")) {
@@ -1208,7 +1213,7 @@ const contentBeforeListFail = contentHits();
 reportMode = "list-fail";
 overviewProfit = 55.5;
 await globalThis.loadOverview();
-if (!document.getElementById("today-digest").innerHTML.includes("日报读取失败")) {
+if (!document.getElementById("today-digest-empty").textContent.includes("日报读取失败")) {
   throw new Error("报告列表读取失败时应显示日报失败文案");
 }
 if (!document.getElementById("cards").innerHTML.includes("55.50")) {

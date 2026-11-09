@@ -378,8 +378,15 @@ function setTodayDigestOpen(name) {
 }
 
 function showTodayDigestEmpty(text) {
-  const box = $('today-digest');
-  if (box) box.innerHTML = `<div class="dim">${esc(text)}</div>`;
+  /* 只切换 hidden，不替换 #today-digest 的直接子节点：
+     预览 WebView 注入脚本会在加载期测量这些节点，替换后容易拿到 null。 */
+  const empty = $('today-digest-empty');
+  const content = $('today-digest-content');
+  if (empty) {
+    empty.textContent = text;
+    empty.classList.remove('hidden');
+  }
+  if (content) content.classList.add('hidden');
   const meta = $('today-digest-meta');
   if (meta) meta.textContent = '';
   setTodayDigestOpen('');
@@ -398,10 +405,13 @@ function renderTodayDigest(name, data) {
   if (meta) {
     meta.textContent = `${data.date || '-'} · ${data.slot || '-'} · ${total} 只 · 震荡 ${neutral.length}`;
   }
-  const box = $('today-digest');
-  if (box) {
-    box.innerHTML = `<h3>看涨 · ${bullish.length}</h3>${digestRows(bullish.slice(0, 5))}
+  const empty = $('today-digest-empty');
+  const content = $('today-digest-content');
+  if (empty) empty.classList.add('hidden');
+  if (content) {
+    content.innerHTML = `<h3>看涨 · ${bullish.length}</h3>${digestRows(bullish.slice(0, 5))}
       <h3>看跌 · ${bearish.length}</h3>${digestRows(bearish.slice(0, 5))}`;
+    content.classList.remove('hidden');
   }
   setTodayDigestOpen(name);
 }

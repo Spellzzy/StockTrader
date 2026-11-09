@@ -163,6 +163,20 @@ def test_no_short_lived_dom_removal():
     assert "search.addEventListener('input', applyFilter)" in js
 
 
+def test_today_digest_uses_stable_shell():
+    """总览日报在首页加载时渲染，顶层子节点必须预置且只切 hidden"""
+    html = client.get("/").text
+    for marker in ('id="today-digest"', 'id="today-digest-empty"',
+                   'id="today-digest-content"'):
+        assert marker in html, f"index.html 缺少 {marker}"
+
+    js = client.get("/static/app.js").text
+    assert "$('today-digest-empty')" in js
+    assert "$('today-digest-content')" in js
+    # 不允许再用 $('today-digest').innerHTML 整体替换
+    assert "$('today-digest').innerHTML" not in js
+
+
 def test_cache_policy_and_training_invalidation():
     """训练轮询不能被当慢任务缓存；训练完成后必须失效预测缓存"""
     ux = client.get("/static/ux.js").text
