@@ -253,3 +253,11 @@ forecast:
     levels: [50, 75, 90]       # 分位数口径：下沿 / 中枢 / 上沿
     backtest_days: 60          # walk-forward 回测天数（只用预测时点之前的数据）
     decay_alpha: 0.7           # 盘中剩余空间衰减指数：越小，区间随时间收敛越快
+
+# ── 智能日报：今日股价参考区间与买卖参考价 ──
+# 每只股票复用 forecast.high 的统计分位数（不训练模型），
+# 在日报 Markdown / 纯文本 / JSON 快照里一并输出。
+digest:
+  trade_range:
+    enabled: true              # 关掉后日报不再附加区间，也不产生额外行情请求
+    max_codes: 8              # 每期最多给几只股票算区间（按信号/评分排序），0 = 不限；调大能覆盖更多自选股但日报会变慢

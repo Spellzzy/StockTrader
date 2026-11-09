@@ -79,7 +79,18 @@ class HighForecastService:
         self.market = market or MarketService()
         self.cfg = dict(config if config is not None else _cfg())
 
-    def forecast(self, code: str, now: Optional[datetime] = None) -> dict:
+    def forecast(
+        self,
+        code: str,
+        now: Optional[datetime] = None,
+        quote: Optional[dict] = None,
+    ) -> dict:
+        """估算今日区间与目标高点
+
+        Args:
+            quote: 可选。外部已批量取好的单只行情，传入后不再单独请求
+                   （日报批量生成时用它把 N 次子进程合并为 1 次）。
+        """
         norm = normalize_stock_code((code or "").strip())
         if is_index_code(norm):
             raise ValueError("指数不适用个股目标高点预测")
@@ -96,11 +107,13 @@ class HighForecastService:
         if df is None or len(df) < MIN_SAMPLES:
             raise ValueError("历史 K 线不足，无法估计目标高点")
 
-        try:
-            quote = (self.market.get_quote(norm) or {}).get(norm) or {}
-        except Exception as e:
-            logger.warning(f"实时行情获取失败 {norm}: {e}")
-            quote = {}
+        if quote is None:
+            try:
+                quote = (self.market.get_quote(norm) or {}).get(norm) or {}
+            except Exception as e:
+                logger.warning(f"实时行情获取失败 {norm}: {e}")
+                quote = {}
+        quote = quote or {}
 
         qtime = str(quote.get("time") or "")
         quote_day = ""
@@ -117,15 +130,20 @@ class HighForecastService:
 
         prev_series = hist["close"].shift(1)
         up_all = (hist["high"] - prev_series) / prev_series * 100
+        dn_all = (hist["low"] - prev_series) / prev_series * 100
         rng_all = (hist["high"] - hist["low"]) / prev_series * 100
         # 分位数严格只用最近 lookback 根，但 prev_close 用完整序列算，避免首根失真
         up = up_all.tail(lookback)
+        dn = dn_all.tail(lookback).replace([np.inf, -np.inf], np.nan).dropna()
         rng = rng_all.tail(lookback)
         up_valid = up.replace([np.inf, -np.inf], np.nan).dropna()
         if len(up_valid) < MIN_SAMPLES:
             raise ValueError("有效历史样本不足（需要至少 30 个交易日）")
 
         quantiles = {lv: float(np.percentile(up_valid, lv)) for lv in levels}
+        # 低点侧：P25 是较深的回调（区间下沿），P50 是中位低点
+        down_p25 = float(np.percentile(dn, 25)) if len(dn) >= MIN_SAMPLES else None
+        down_p50 = float(np.percentile(dn, 50)) if len(dn) >= MIN_SAMPLES else None
         amp_p75 = float(np.nanpercentile(rng.dropna(), 75))
 
         prev_close = float(quote.get("prev_close") or 0) or float(hist["close"].iloc[-1])
@@ -182,11 +200,43 @@ class HighForecastService:
         low_key = f"p{levels[0]}"
         high_key = f"p{levels[-1]}"
 
+        # ---- 今日参考区间与买卖参考价 ----
+        # 下沿：盘前用历史「最低价相对昨收」P25（较深回调），盘中改用当日已实现最低价；
+        # 上沿：目标高点中枢。买卖参考价取区间 25% / 75% 分位，口径统一可解释。
+        limit_down = prev_close * (1 - limit_pct / 100) if limit_pct else None
+        theoretical_low = prev_close * (
+            1 + (down_p25 if down_p25 is not None else 0) / 100
+        )
+        if phase == "closed":
+            range_low = day_low if day_low > 0 else theoretical_low
+            range_high = realized
+        elif phase == "intraday":
+            range_low = day_low if day_low > 0 else theoretical_low
+            range_high = max(targets[center_key], realized)
+        else:
+            range_low = theoretical_low
+            range_high = targets[center_key]
+
+        if limit_down is not None:
+            range_low = max(range_low, limit_down)
+        if cap is not None:
+            range_high = min(range_high, cap)
+        range_high = max(range_high, range_low)
+        span = range_high - range_low
+        buy_ref = round(range_low + span * 0.25, 3)
+        sell_ref = round(range_low + span * 0.75, 3)
+        if phase == "intraday" and price > 0:
+            # 盘中现价可能已冲到区间上部：参考价面向剩余时段，
+            # 卖出不低于现价、买入不高于现价，避免出现「低于现价的卖出价」。
+            buy_ref = round(min(buy_ref, price), 3)
+            sell_ref = round(max(sell_ref, price), 3)
+        day_range = {"low": round(range_low, 3), "high": round(range_high, 3)}
+
         # 若数据源给的根数不足，自动缩短回测窗口，保证至少能评估出样本
         bt_lookback = min(lookback, max(MIN_SAMPLES, len(hist) - backtest_days - 1))
         quality = self._backtest(hist, bt_lookback, backtest_days)
 
-        note = "统计区间，非承诺价格；不构成投资建议。"
+        note = "统计区间与参考价，非承诺价格、非投资建议，不构成买卖依据。"
         if phase == "closed":
             note = "已收盘或行情非当日，下方展示当日实际最高价，不再预测。" + note
         elif phase == "intraday":
@@ -209,6 +259,9 @@ class HighForecastService:
             "targets": targets,
             "center": targets[center_key],
             "band": {"low": targets[low_key], "high": targets[high_key]},
+            "day_range": day_range,
+            "buy_ref": buy_ref,
+            "sell_ref": sell_ref,
             "probabilities": probabilities,
             "upside_pct": upside,
             "basis": {
@@ -216,11 +269,14 @@ class HighForecastService:
                 "lookback": lookback,
                 "backtest_lookback": bt_lookback,
                 "up_quantiles_pct": {f"p{lv}": round(quantiles[lv], 2) for lv in levels},
+                "down_p25_pct": round(down_p25, 2) if down_p25 is not None else None,
+                "down_p50_pct": round(down_p50, 2) if down_p50 is not None else None,
                 "amplitude_p75_pct": round(amp_p75, 2),
                 "decay": round(decay, 3),
                 "decay_alpha": alpha,
                 "limit_pct": limit_pct,
                 "limit_price": round(cap, 3) if cap else None,
+                "limit_down": round(limit_down, 3) if limit_down else None,
             },
             "quality": quality,
             "method": "historical-quantile + intraday-time-decay (no ML model)",
@@ -232,7 +288,9 @@ class HighForecastService:
         """walk-forward：每天只用之前 lookback 根算分位数，与当日实际高点比较"""
         prev = df["close"].shift(1)
         up = ((df["high"] - prev) / prev * 100).to_numpy(dtype=float)
+        dn = ((df["low"] - prev) / prev * 100).to_numpy(dtype=float)
         highs = df["high"].to_numpy(dtype=float)
+        lows = df["low"].to_numpy(dtype=float)
         closes = df["close"].to_numpy(dtype=float)
         n = len(df)
         start = max(lookback, n - max_days)
@@ -243,7 +301,12 @@ class HighForecastService:
             window = window[np.isfinite(window)]
             if len(window) < MIN_SAMPLES:
                 continue
+            window_dn = dn[t - lookback:t]
+            window_dn = window_dn[np.isfinite(window_dn)]
+            if len(window_dn) < MIN_SAMPLES:
+                continue
             q50, q75, q90 = np.percentile(window, [50, 75, 90])
+            q25_dn = np.percentile(window_dn, 25)
             pc = closes[t - 1]
             if not pc or not np.isfinite(pc):
                 continue
@@ -251,7 +314,9 @@ class HighForecastService:
                 "p50": pc * (1 + q50 / 100),
                 "p75": pc * (1 + q75 / 100),
                 "p90": pc * (1 + q90 / 100),
+                "pred_low": pc * (1 + q25_dn / 100),
                 "actual": highs[t],
+                "actual_low": lows[t],
                 "baseline": highs[t - 1],
             })
 
@@ -269,6 +334,10 @@ class HighForecastService:
         p50 = np.array([r["p50"] for r in records])
         p90 = np.array([r["p90"] for r in records])
         p75 = np.array([r["p75"] for r in records])
+        actual_low = np.array([r["actual_low"] for r in records], dtype=float)
+        pred_low = np.array([r["pred_low"] for r in records], dtype=float)
+        # 区间覆盖率：当日实际 [low, high] 是否落在「P25 低点 ~ P75 高点」区间内
+        range_coverage = float(np.mean((actual_low >= pred_low) & (actual <= p75)))
 
         return {
             "samples": len(records),
@@ -278,6 +347,7 @@ class HighForecastService:
             "mae_pct": round(mae, 2),
             "baseline_mae_pct": round(baseline_mae, 2),
             "coverage": round(float(np.mean((actual >= p50) & (actual <= p90))), 3),
+            "range_coverage": round(range_coverage, 3),
             "better_than_baseline": mae < baseline_mae,
             "note": "walk-forward：每日仅用之前 lookback 根数据，预测当日最高价的 P75 中枢",
         }

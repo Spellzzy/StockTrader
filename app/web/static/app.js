@@ -194,6 +194,7 @@ function digestSnapshot(item) {
     key_factors: Array.isArray(src.key_factors) ? src.key_factors.slice() : [],
   };
   if (Object.prototype.hasOwnProperty.call(src, 'quality')) snap.quality = src.quality;
+  if (Object.prototype.hasOwnProperty.call(src, 'trade_range')) snap.trade_range = src.trade_range;
   return snap;
 }
 
@@ -258,6 +259,14 @@ function renderDigestEvidence(item) {
     if (text) shown.push(text);
   }
   if (shown.length) rows.push(['依据', shown.join('、')]);
+  const tr = snapshot.trade_range;
+  const hasRange = tr && typeof tr === 'object'
+    && ['low', 'high', 'buy', 'sell'].every(k => Number.isFinite(Number(tr[k])));
+  if (hasRange) {
+    rows.push(['今日参考区间',
+      `${Number(tr.low).toFixed(2)} ~ ${Number(tr.high).toFixed(2)}`
+      + ` · 买 ${Number(tr.buy).toFixed(2)} / 卖 ${Number(tr.sell).toFixed(2)}（统计参考）`]);
+  }
   const kv = '<div class="detail-kv">' + rows.map(([k, v]) =>
     `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('') + '</div>';
   const body = below ? `<div class="quality-warn">${kv}</div>` : kv;
@@ -301,6 +310,14 @@ function digestRows(items) {
       : '';
     const score = Number(item && item.score);
     const snap = digestSnapshot(item);
+    const tr = item && item.trade_range;
+    const hasRange = tr && typeof tr === 'object'
+      && Number.isFinite(Number(tr.low)) && Number.isFinite(Number(tr.high))
+      && Number.isFinite(Number(tr.buy)) && Number.isFinite(Number(tr.sell));
+    const rangeLine = hasRange
+      ? `<div class="dim">📐 区间 ${Number(tr.low).toFixed(2)} ~ ${Number(tr.high).toFixed(2)}`
+        + ` · 买 ${Number(tr.buy).toFixed(2)} / 卖 ${Number(tr.sell).toFixed(2)}（统计参考）</div>`
+      : '';
     const label = '查看'
       + (snap.code ? ' ' + snap.code : '')
       + (snap.name ? ' ' + snap.name : '')
@@ -315,7 +332,7 @@ function digestRows(items) {
       <td>${esc(item && item.signal)}</td>
       <td class="num">${Number.isFinite(score) ? score.toFixed(1) : '-'}</td>
       <td class="num">${typeof conf === 'number' ? conf.toFixed(1) + '%' : '-'}</td>
-      <td>${esc(quality)}${esc(extra)}</td>
+      <td>${esc(quality)}${esc(extra)}${rangeLine}</td>
     </tr>`;
   }).join('');
   return `<div class="table-wrap"><table><thead><tr>

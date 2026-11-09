@@ -26,6 +26,7 @@ _ITEM_KEYS = (
     "key_factors",
     "quality",
     "models_used",
+    "trade_range",
 )
 
 

@@ -172,6 +172,58 @@ def test_no_quote_falls_back_to_premarket():
     assert d["phase"] == "premarket" and d["price"] == 0
 
 
+def test_day_range_and_reference_prices(svc):
+    d = svc.forecast("sh600519", now=datetime(2026, 11, 6, 9, 0))
+    r = d["day_range"]
+    assert r["low"] < d["buy_ref"] < d["sell_ref"] < r["high"]
+    assert d["basis"]["down_p25_pct"] is not None
+    assert d["basis"]["limit_down"] is not None
+    assert 0 <= d["quality"]["range_coverage"] <= 1
+    assert "非投资建议" in d["note"]
+
+
+def test_intraday_reference_prices_stay_actionable(svc):
+    d = svc.forecast("sh600519", now=datetime(2026, 11, 6, 10, 30))
+    assert d["buy_ref"] <= QUOTE["price"] + 1e-6
+    assert d["sell_ref"] >= QUOTE["price"] - 1e-6
+    assert d["buy_ref"] <= d["sell_ref"]
+
+
+def test_intraday_range_uses_realized_low(svc):
+    d = svc.forecast("sh600519", now=datetime(2026, 11, 6, 10, 30))
+    assert d["day_range"]["low"] == round(QUOTE["low"], 3)
+
+
+def test_closed_range_shows_realized_day(svc):
+    d = svc.forecast("sh600519", now=datetime(2026, 11, 6, 15, 30))
+    assert d["day_range"]["low"] == round(QUOTE["low"], 3)
+    assert d["day_range"]["high"] == round(max(QUOTE["high"], QUOTE["price"]), 3)
+
+
+def test_injected_quote_avoids_extra_request():
+    class CountingMarket(FakeMarket):
+        def __init__(self):
+            super().__init__()
+            self.quote_calls = 0
+
+        def get_quote(self, *codes):
+            self.quote_calls += 1
+            return super().get_quote(*codes)
+
+    market = CountingMarket()
+    service = HighForecastService(market=market, config=CONFIG)
+    service.forecast("sh600519", quote=dict(QUOTE))
+    assert market.quote_calls == 0
+
+
+def test_range_low_clamped_to_limit_down():
+    market = FakeMarket(df=_kline(volatility=0.25))
+    d = HighForecastService(market=market, config=CONFIG).forecast(
+        "sh600519", now=datetime(2026, 11, 6, 9, 0)
+    )
+    assert d["day_range"]["low"] >= d["basis"]["limit_down"] - 1e-6
+
+
 def test_quality_report_has_baseline_comparison(svc):
     q = svc.forecast("sh600519", now=datetime(2026, 11, 6, 9, 0))["quality"]
     for key in ("samples", "touch_p50", "touch_p75", "touch_p90",

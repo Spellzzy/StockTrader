@@ -199,6 +199,9 @@ class SmartDigestService:
             else:
                 neutral.append(item)
 
+        # 3.5 附加今日参考区间（统计口径；可做开关、限量，失败不影响日报）
+        self._attach_trade_ranges(bullish + bearish + neutral, codes)
+
         # 4. 可选 LLM 深度分析（对头部和尾部追加）
         llm_reports = {}
         if use_llm and self.predictor.has_llm:
@@ -284,6 +287,83 @@ class SmartDigestService:
 
     # ==================== 文本组装 ====================
 
+
+    # ==================== 今日参考区间 ====================
+
+    @staticmethod
+    def _attach_trade_ranges(items: list, codes: list) -> None:
+        """给日报条目附加今日股价区间与买卖参考价。
+
+        - 一次批量 quote，K 线仍逐只取（有本地缓存）
+        - 按信号/评分排序后限量，避免日报因额外计算明显变慢
+        - 单只失败只跳过该只，绝不中断日报生成
+        """
+        from app.config import get_config
+
+        cfg = (get_config().get("digest") or {}).get("trade_range") or {}
+        if not cfg.get("enabled", True) or not items:
+            return
+        max_codes = int(cfg.get("max_codes", 8) or 8)
+        if max_codes <= 0:
+            max_codes = len(items)
+
+        from app.services.high_forecast_service import HighForecastService
+        from app.services.market_service import MarketService
+
+        market = MarketService()
+        try:
+            quotes = market.get_quote(*codes) or {}
+        except Exception as e:
+            logger.warning(f"日报区间行情获取失败，跳过: {e}")
+            return
+
+        service = HighForecastService(market=market)
+        ranked = sorted(
+            items,
+            key=lambda x: (
+                0 if x.get("signal") == "看涨" else 1,
+                -abs(float(x.get("score") or 0)),
+            ),
+        )
+        for item in ranked[:max_codes]:
+            code = item.get("code")
+            if not code:
+                continue
+            try:
+                d = service.forecast(code, quote=quotes.get(code))
+                q = d.get("quality") or {}
+                item["trade_range"] = {
+                    "low": d["day_range"]["low"],
+                    "high": d["day_range"]["high"],
+                    "buy": d["buy_ref"],
+                    "sell": d["sell_ref"],
+                    "price": d["price"],
+                    "prev_close": d["prev_close"],
+                    "phase": d["phase"],
+                    "as_of": d["as_of"],
+                    "sample_days": d["basis"]["sample_days"],
+                    "range_coverage": q.get("range_coverage"),
+                    "note": "统计参考，非投资建议",
+                }
+            except Exception as e:
+                logger.warning(f"日报区间计算失败 {code}: {e}")
+
+    @staticmethod
+    def _append_trade_range(lines: list, item: dict, indent: str) -> None:
+        """把区间渲染成两行，措辞保持「参考」而非买卖指令。"""
+        r = item.get("trade_range")
+        if not isinstance(r, dict):
+            return
+        lines.append(
+            f"{indent}📐 今日参考区间 {float(r['low']):.2f} ~ {float(r['high']):.2f}"
+            f" · 买入参考 {float(r['buy']):.2f} · 卖出参考 {float(r['sell']):.2f}"
+        )
+        cov = r.get("range_coverage")
+        extra = f" · 区间回测覆盖率 {float(cov) * 100:.0f}%" if isinstance(cov, (int, float)) else ""
+        lines.append(
+            f"{indent}   近 {r.get('sample_days', 0)} 日分位数（P25 低点 / P75 高点）{extra}；"
+            "统计参考，非投资建议"
+        )
 
     @staticmethod
     def _quality_warning(item: dict) -> Optional[str]:
@@ -375,6 +455,7 @@ class SmartDigestService:
                 if item["key_factors"]:
                     lines.append(f"   关键: {' | '.join(item['key_factors'][:3])}")
                 self._append_credibility_card(lines, item, "   ")
+                self._append_trade_range(lines, item, "   ")
 
                 # LLM 分析追加
                 report = llm_reports.get(item["code"])
@@ -397,6 +478,7 @@ class SmartDigestService:
                 warn = self._quality_warning(item)
                 if warn:
                     lines.append(f"  ⚠️ 可信度: {warn}")
+                self._append_trade_range(lines, item, "  ")
             lines.append("")
 
         # 看跌区
@@ -413,6 +495,7 @@ class SmartDigestService:
                 if item["key_factors"]:
                     lines.append(f"   风险: {' | '.join(item['key_factors'][:3])}")
                 self._append_credibility_card(lines, item, "   ")
+                self._append_trade_range(lines, item, "   ")
 
                 report = llm_reports.get(item["code"])
                 if report:
@@ -486,6 +569,7 @@ class SmartDigestService:
                 if item["key_factors"]:
                     lines.append(f"     关键: {' | '.join(item['key_factors'][:3])}")
                 self._append_credibility_card(lines, item, "     ")
+                self._append_trade_range(lines, item, "     ")
 
                 report = llm_reports.get(item["code"])
                 if report:
@@ -504,6 +588,7 @@ class SmartDigestService:
                 warn = self._quality_warning(item)
                 if warn:
                     lines.append(f"    [yellow]⚠️ 可信度: {warn}[/yellow]")
+                self._append_trade_range(lines, item, "    ")
             lines.append("")
 
         if bearish:
@@ -519,6 +604,7 @@ class SmartDigestService:
                 if item["key_factors"]:
                     lines.append(f"     风险: {' | '.join(item['key_factors'][:3])}")
                 self._append_credibility_card(lines, item, "     ")
+                self._append_trade_range(lines, item, "     ")
 
                 report = llm_reports.get(item["code"])
                 if report:
