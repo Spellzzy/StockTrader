@@ -441,3 +441,11 @@ body.density-compact .form-grid { gap: 8px; margin-bottom: 10px; }
   *, *::before, *::after { animation-duration: .01ms !important;
     transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* AI 预测：今日低价 / 买入 / 卖出 / 止损参考价 */
+.ref-prices { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-2); font-size: 13px; color: var(--dim); }
+.ref-prices b { color: var(--fg); font-weight: 600;
+  font-variant-numeric: tabular-nums; }
+.ref-prices .ref-stop, .ref-prices .ref-stop b { color: var(--warn); }

@@ -346,6 +346,14 @@ async function loadHighForecast() {
       <td class="num">${finite(d.probabilities[k] * 100, 0)}%</td></tr>`).join('');
     const b = d.basis || {}, q = d.quality || {};
     const quant = b.up_quantiles_pct || {};
+    const refPrices = `
+      <div class="ref-prices">
+        <span>低价参考 <b>${finite(d.low_ref)}</b></span>
+        <span>买入参考 <b>${finite(d.buy_ref)}</b></span>
+        <span>卖出参考 <b>${finite(d.sell_ref)}</b></span>
+        <span class="ref-stop">止损参考 <b>${finite(d.stop_loss_ref)}</b>
+          （较买入价 -${finite(d.stop_loss_pct, 1)}%）</span>
+      </div>`;
     const qualityLine = q.samples
       ? `<div class="${q.better_than_baseline ? 'dim' : 'quality-warn'}">walk-forward ${finite(q.samples, 0)} 日：
           P75 触及率 ${finite(q.touch_p75 * 100, 0)}% · 区间覆盖率 ${finite(q.coverage * 100, 0)}% ·
@@ -353,6 +361,7 @@ async function loadHighForecast() {
           （${q.better_than_baseline ? '优于基线' : '不优于基线'}）</div>` : '';
     el.innerHTML = `
       <div class="cards">${cards}</div>
+      ${refPrices}
       <div class="dim"><b>${esc(d.code)} ${esc(d.name || '')}</b> ·
         ${esc(PHASE_LABEL[d.phase] || d.phase)} · 昨收 ${finite(d.prev_close)} ·
         交易进度 ${finite(d.progress * 100, 0)}% · 数据时间 ${esc(String(d.as_of || '').slice(0, 14))}</div>
@@ -363,7 +372,8 @@ async function loadHighForecast() {
       <div class="dim" style="margin-top:10px">依据：近 ${finite(b.sample_days, 0)} 日 ·
         历史涨幅分位 P50/P75/P90 = ${finite(quant.p50)}% / ${finite(quant.p75)}% / ${finite(quant.p90)}% ·
         振幅 P75 ${finite(b.amplitude_p75_pct)}% · 时间衰减 ${finite(b.decay)} ·
-        涨停上限 ${b.limit_price ? finite(b.limit_price) : '不适用'}</div>
+        涨停上限 ${b.limit_price ? finite(b.limit_price) : '不适用'} ·
+        跌停下限 ${b.limit_down ? finite(b.limit_down) : '不适用'}</div>
       ${qualityLine}
       <div class="quality-warn" style="margin-top:10px">${esc(d.note || '')}</div>`;
     el.dataset.code = code;   // 记录卡片当前对应哪只股票，供点预测时兜底校验

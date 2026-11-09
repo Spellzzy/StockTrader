@@ -302,8 +302,13 @@ def test_frontend_wires_forecast(client):
     for marker in ("/api/forecast/high", "loadHighForecast", "PHASE_LABEL",
                    "better_than_baseline", "touch_p75",
                    "syncHighForecast", "el.dataset.code",
-                   "input.dispatchEvent(new Event('change'", "esc(d.code)"):
+                   "input.dispatchEvent(new Event('change'", "esc(d.code)",
+                   "ref-prices", "低价参考", "止损参考", "low_ref",
+                   "stop_loss_ref", "跌停下限"):
         assert marker in js, f"p1.js 缺少 {marker}"
+
+    css = client.get("/static/style.css").text
+    assert ".ref-prices" in css and ".ref-stop" in css
 
 
 def test_cli_command_registered():

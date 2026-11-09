@@ -114,12 +114,16 @@ const forecastMock = {
   code: "sh600892", name: "大晟文化", phase: "intraday", progress: 0.3,
   price: 16.39, prev_close: 16.66, day_high: 16.76, as_of: "20261106103000",
   targets: { p50: 16.80, p75: 16.92, p90: 17.13 },
+  day_range: { low: 16.10, high: 16.92 },
+  low_ref: 16.10, buy_ref: 16.31, sell_ref: 16.72,
+  stop_loss_ref: 15.49, stop_loss_pct: 5.0,
   band: { low: 16.80, high: 17.13 },
   probabilities: { p50: 0.31, p75: 0.15, p90: 0.06 },
   upside_pct: { p50: 2.5, p75: 3.26, p90: 4.52 },
   basis: {
     sample_days: 120, up_quantiles_pct: { p50: 0.99, p75: 2.30, p90: 4.22 },
     amplitude_p75_pct: 4.02, decay: 0.8, limit_price: 18.33,
+    limit_down: 14.99, stop_loss_target_pct: 5.0,
   },
   quality: {
     samples: 60, touch_p75: 0.12, coverage: 0.37, mae_pct: 1.97,
@@ -247,6 +251,13 @@ if (cardBox.dataset.code !== "sh600892") {
   throw new Error("切换股票后目标高点卡片未刷新");
 }
 console.log("  切换股票联动刷新目标高点行为断言 OK");
+
+for (const piece of ["低价参考", "买入参考", "卖出参考", "止损参考", "15.49"]) {
+  if (!cardBox.innerHTML.includes(piece)) {
+    throw new Error("目标高点卡片缺少参考价：" + piece);
+  }
+}
+console.log("  AI 预测卡片低价/买卖/止损参考价断言 OK");
 
 /* 报告页：Markdown 在面板内展示原文（含可信度卡片）；HTML 仍新标签打开 */
 const digestName = "digest_20261106_am.md";
