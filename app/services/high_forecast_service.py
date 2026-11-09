@@ -36,6 +36,7 @@ DEFAULT_LOOKBACK = 120
 DEFAULT_LEVELS = (50, 75, 90)
 DEFAULT_BACKTEST_DAYS = 60
 DEFAULT_DECAY_ALPHA = 0.7
+DEFAULT_STOP_LOSS_PCT = 5.0
 MIN_SAMPLES = 30
 
 
@@ -232,6 +233,18 @@ class HighForecastService:
             sell_ref = round(max(sell_ref, price), 3)
         day_range = {"low": round(range_low, 3), "high": round(range_high, 3)}
 
+        # 止损参考：买入参考价下方 stop_loss_pct，且不低于跌停价。
+        # clamp 后实际亏损比例会变小（甚至为 0），如实返回，避免虚标 -5%。
+        stop_loss_target = float(self.cfg.get("stop_loss_pct", DEFAULT_STOP_LOSS_PCT))
+        stop_loss_target = max(0.0, min(stop_loss_target, 50.0))
+        stop_loss_ref = buy_ref * (1 - stop_loss_target / 100)
+        if limit_down is not None:
+            stop_loss_ref = max(stop_loss_ref, limit_down)
+        stop_loss_ref = round(stop_loss_ref, 3)
+        actual_stop_pct = (
+            round((buy_ref - stop_loss_ref) / buy_ref * 100, 2) if buy_ref > 0 else 0.0
+        )
+
         # 若数据源给的根数不足，自动缩短回测窗口，保证至少能评估出样本
         bt_lookback = min(lookback, max(MIN_SAMPLES, len(hist) - backtest_days - 1))
         quality = self._backtest(hist, bt_lookback, backtest_days)
@@ -260,8 +273,11 @@ class HighForecastService:
             "center": targets[center_key],
             "band": {"low": targets[low_key], "high": targets[high_key]},
             "day_range": day_range,
+            "low_ref": day_range["low"],
             "buy_ref": buy_ref,
             "sell_ref": sell_ref,
+            "stop_loss_ref": stop_loss_ref,
+            "stop_loss_pct": actual_stop_pct,
             "probabilities": probabilities,
             "upside_pct": upside,
             "basis": {
@@ -274,6 +290,7 @@ class HighForecastService:
                 "amplitude_p75_pct": round(amp_p75, 2),
                 "decay": round(decay, 3),
                 "decay_alpha": alpha,
+                "stop_loss_target_pct": stop_loss_target,
                 "limit_pct": limit_pct,
                 "limit_price": round(cap, 3) if cap else None,
                 "limit_down": round(limit_down, 3) if limit_down else None,

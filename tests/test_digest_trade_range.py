@@ -11,6 +11,8 @@ FAKE_FORECAST = {
     "day_range": {"low": 9.5, "high": 10.8},
     "buy_ref": 9.83,
     "sell_ref": 10.48,
+    "stop_loss_ref": 9.34,
+    "stop_loss_pct": 5.0,
     "price": 10.2,
     "prev_close": 10.0,
     "phase": "intraday",
@@ -62,6 +64,7 @@ def test_attach_respects_limit_and_batches_quote(patched):
     assert {x["code"] for x in with_range} == {"sh600519", "sz000001"}
     assert with_range[0]["trade_range"] == {
         "low": 9.5, "high": 10.8, "buy": 9.83, "sell": 10.48,
+        "stop_loss": 9.34, "stop_loss_pct": 5.0,
         "price": 10.2, "prev_close": 10.0, "phase": "intraday",
         "as_of": "20261109103000", "sample_days": 120,
         "range_coverage": 0.62, "note": "统计参考，非投资建议",
@@ -113,6 +116,7 @@ def _with_ranges():
     for item in items:
         item["trade_range"] = {
             "low": 9.5, "high": 10.8, "buy": 9.83, "sell": 10.48,
+            "stop_loss": 9.34, "stop_loss_pct": 5.0,
             "sample_days": 120, "range_coverage": 0.62,
         }
     return items
@@ -123,8 +127,21 @@ def test_markdown_renders_all_three_sections():
     text = svc._build_markdown_digest(_digest(_with_ranges()), {})
     assert text.count("📐 今日参考区间") == 3
     assert "买入参考 9.83" in text and "卖出参考 10.48" in text
+    assert text.count("低价参考 9.50") == 3
+    assert text.count("止损参考 9.34") == 3
+    assert "-5.0%" in text
     assert "区间回测覆盖率 62%" in text
     assert "统计参考，非投资建议" in text
+
+
+def test_old_format_without_stop_loss_omits_line():
+    items = _with_ranges()
+    for item in items:
+        del item["trade_range"]["stop_loss"]
+        del item["trade_range"]["stop_loss_pct"]
+    text = SmartDigestService()._build_markdown_digest(_digest(items), {})
+    assert "今日参考区间" in text
+    assert "止损参考" not in text
 
 
 def test_plain_digest_renders_range():
@@ -154,5 +171,6 @@ def test_frontend_wires_trade_range():
     js = (Path(__file__).resolve().parent.parent / "app/web/static/app.js").read_text(
         encoding="utf-8"
     )
-    for marker in ("snap.trade_range", "📐 区间", "统计参考", "今日参考区间"):
+    for marker in ("snap.trade_range", "📐 区间", "统计参考", "今日参考区间",
+                   "止损参考", "stop_loss_pct"):
         assert marker in js, f"app.js 缺少 {marker}"

@@ -337,6 +337,8 @@ class SmartDigestService:
                     "high": d["day_range"]["high"],
                     "buy": d["buy_ref"],
                     "sell": d["sell_ref"],
+                    "stop_loss": d["stop_loss_ref"],
+                    "stop_loss_pct": d["stop_loss_pct"],
                     "price": d["price"],
                     "prev_close": d["prev_close"],
                     "phase": d["phase"],
@@ -358,6 +360,14 @@ class SmartDigestService:
             f"{indent}📐 今日参考区间 {float(r['low']):.2f} ~ {float(r['high']):.2f}"
             f" · 买入参考 {float(r['buy']):.2f} · 卖出参考 {float(r['sell']):.2f}"
         )
+        stop = r.get("stop_loss")
+        stop_pct = r.get("stop_loss_pct")
+        # 旧格式日报没有止损字段，静默省略该行
+        if isinstance(stop, (int, float)) and isinstance(stop_pct, (int, float)):
+            lines.append(
+                f"{indent}   低价参考 {float(r['low']):.2f} · "
+                f"止损参考 {float(stop):.2f}（较买入价 -{float(stop_pct):.1f}%）"
+            )
         cov = r.get("range_coverage")
         extra = f" · 区间回测覆盖率 {float(cov) * 100:.0f}%" if isinstance(cov, (int, float)) else ""
         lines.append(

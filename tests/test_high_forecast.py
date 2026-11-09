@@ -182,6 +182,34 @@ def test_day_range_and_reference_prices(svc):
     assert "非投资建议" in d["note"]
 
 
+def test_low_and_stop_loss_reference(svc):
+    d = svc.forecast("sh600519", now=datetime(2026, 11, 6, 9, 0))
+    assert d["low_ref"] == d["day_range"]["low"]
+    assert d["stop_loss_ref"] < d["buy_ref"]
+    assert d["stop_loss_ref"] >= d["basis"]["limit_down"] - 1e-6
+    assert 0 <= d["stop_loss_pct"] <= 5.0 + 1e-6
+    assert d["basis"]["stop_loss_target_pct"] == 5.0
+
+
+def test_stop_loss_pct_is_configurable():
+    cfg = dict(CONFIG, stop_loss_pct=8.0)
+    d = HighForecastService(market=FakeMarket(), config=cfg).forecast(
+        "sh600519", now=datetime(2026, 11, 6, 9, 0)
+    )
+    assert d["basis"]["stop_loss_target_pct"] == 8.0
+    assert abs(d["stop_loss_pct"] - 8.0) < 0.05   # 未触及跌停 clamp
+
+
+def test_stop_loss_clamped_to_limit_down():
+    cfg = dict(CONFIG, stop_loss_pct=50.0)
+    d = HighForecastService(market=FakeMarket(), config=cfg).forecast(
+        "sh600519", now=datetime(2026, 11, 6, 9, 0)
+    )
+    assert d["stop_loss_ref"] >= d["basis"]["limit_down"] - 1e-6
+    # clamp 后如实标注实际亏损，而不是虚标 -50%
+    assert d["stop_loss_pct"] < 50.0
+
+
 def test_intraday_reference_prices_stay_actionable(svc):
     d = svc.forecast("sh600519", now=datetime(2026, 11, 6, 10, 30))
     assert d["buy_ref"] <= QUOTE["price"] + 1e-6

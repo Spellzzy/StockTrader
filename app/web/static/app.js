@@ -266,6 +266,11 @@ function renderDigestEvidence(item) {
     rows.push(['今日参考区间',
       `${Number(tr.low).toFixed(2)} ~ ${Number(tr.high).toFixed(2)}`
       + ` · 买 ${Number(tr.buy).toFixed(2)} / 卖 ${Number(tr.sell).toFixed(2)}（统计参考）`]);
+    const stop = Number(tr.stop_loss);
+    if (Number.isFinite(stop)) {
+      rows.push(['止损参考',
+        `${stop.toFixed(2)}（较买入价 -${Number(tr.stop_loss_pct || 0).toFixed(1)}%）`]);
+    }
   }
   const kv = '<div class="detail-kv">' + rows.map(([k, v]) =>
     `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('') + '</div>';
@@ -314,9 +319,14 @@ function digestRows(items) {
     const hasRange = tr && typeof tr === 'object'
       && Number.isFinite(Number(tr.low)) && Number.isFinite(Number(tr.high))
       && Number.isFinite(Number(tr.buy)) && Number.isFinite(Number(tr.sell));
+    const stopLine = hasRange && Number.isFinite(Number(tr.stop_loss))
+      ? ` · 止损 ${Number(tr.stop_loss).toFixed(2)}`
+        + `（-${Number(tr.stop_loss_pct || 0).toFixed(1)}%）`
+      : '';
     const rangeLine = hasRange
       ? `<div class="dim">📐 区间 ${Number(tr.low).toFixed(2)} ~ ${Number(tr.high).toFixed(2)}`
-        + ` · 买 ${Number(tr.buy).toFixed(2)} / 卖 ${Number(tr.sell).toFixed(2)}（统计参考）</div>`
+        + ` · 买 ${Number(tr.buy).toFixed(2)} / 卖 ${Number(tr.sell).toFixed(2)}`
+        + `${stopLine}（统计参考）</div>`
       : '';
     const label = '查看'
       + (snap.code ? ' ' + snap.code : '')
