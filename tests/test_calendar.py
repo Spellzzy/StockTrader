@@ -44,3 +44,19 @@ def test_next_trading_day_skips_holiday_run():
 def test_from_config_reads_market_section():
     cal = TradingCalendar.from_config({"market": {"holidays": ["2026-01-01"]}})
     assert cal.is_trading_day(date(2026, 1, 1)) is False
+
+
+def test_2026_exchange_holidays_in_config_template():
+    """模板里的 2026 休市表必须挡住工作日休市、放行节后首日"""
+    from pathlib import Path
+
+    import yaml
+
+    template = Path(__file__).resolve().parent.parent / "config.yaml.example"
+    cfg = yaml.safe_load(template.read_text(encoding="utf-8"))
+    cal = TradingCalendar.from_config(cfg)
+
+    for day in ("2026-01-01", "2026-02-23", "2026-05-01", "2026-10-07"):
+        assert cal.is_trading_day(day) is False
+    for day in ("2026-01-05", "2026-02-24", "2026-05-06", "2026-10-08"):
+        assert cal.is_trading_day(day) is True

@@ -35,3 +35,28 @@ def test_cli_does_not_import_itself():
     source = (APP_DIR / "cli.py").read_text(encoding="utf-8")
     assert "import app.cli" not in source
     assert "_self_module" not in source
+
+
+def test_every_registered_command_help_runs(monkeypatch):
+    """每个命令的 --help 都要能跑通，拦截导入期 NameError 等低级错误"""
+    from typer.testing import CliRunner
+
+    import app.cli as cli
+    import app.logging_setup as logging_setup
+
+    monkeypatch.setattr(cli, "init_db", lambda: None)
+    monkeypatch.setattr(logging_setup, "setup_logging", lambda *a, **kw: None)
+
+    runner = CliRunner()
+    failures = []
+    for command in cli.app.registered_commands:
+        name = command.name or command.callback.__name__
+        result = runner.invoke(cli.app, [name, "--help"])
+        if result.exit_code != 0:
+            failures.append((name, repr(result.exception)))
+    for group in cli.app.registered_groups:
+        result = runner.invoke(cli.app, [group.name, "--help"])
+        if result.exit_code != 0:
+            failures.append((group.name, repr(result.exception)))
+
+    assert failures == [], f"--help 失败: {failures}"

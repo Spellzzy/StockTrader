@@ -112,8 +112,9 @@
 1. ~~**`config.yaml` 里有明文 PushPlus token**（文件已被 gitignore）。建议改用环境变量~~
    ✅ 已迁移：密钥放项目根目录 `.env`（已 gitignore）或系统环境变量
    `STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN`，`config.yaml` 已清空。
-2. **交易日历的节假日需要人工维护**：`config.yaml` 的 `market.holidays`，
-   每年初按交易所公告填一次，否则只会按周末判断。
+2. ~~**交易日历的节假日需要人工维护**：`config.yaml` 的 `market.holidays`，
+   每年初按交易所公告填一次，否则只会按周末判断。~~
+   ✅ 2026 年已按沪深交易所公告填好（`config.yaml.example` 同步），每年初仍需更新一次。
 3. **测试覆盖率约 24%**：`smart_digest`、`pool_loader`、`watch`、TUI、可视化仍是空白，
    后续改这些模块前应先补特征测试。
 4. **`data/models/ml/` 下有 6 个我在冒烟测试期间误训练的模型**
@@ -121,5 +122,7 @@
    可直接删除：`remove-item data/models/ml/*20261030*.joblib`。
 5. **Alembic 迁移与 `init_db()` 并存**：日常 CLI 仍走 `init_db()`；改模型后需
    `alembic revision --autogenerate` 生成迁移，否则迁移会落后于 ORM 定义。
-6. CLI 命令层仍无任何测试，改动 `commands/*.py` 后需要手动冒烟（本次即通过
-   `python -m app.cli <cmd>` 逐个验证）。
+   ✅ 2026-11-25 已对现有库 `alembic stamp head` + 补迁移 `74ac64923d7f`
+   （`portfolio.manual_override` 非空约束），`alembic check` 通过。
+6. ~~CLI 命令层仍无任何测试，改动 `commands/*.py` 后需要手动冒烟~~
+   ✅ 新增注册表冒烟测试：108 个顶层命令 + 12 个分组的 `--help` 全部自动跑一遍。
