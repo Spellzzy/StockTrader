@@ -247,6 +247,7 @@ class SmartDigestService:
         # 生成文本摘要
         digest["summary_text"] = self._build_markdown_digest(digest, code_names)
         digest["plain_text"] = self._build_plain_digest(digest, code_names)
+        digest["push_text"] = self._build_push_text(digest)
 
         return digest
 
@@ -272,18 +273,71 @@ class SmartDigestService:
         if not digest:
             return {"digest": None, "push_results": []}
 
-        # 推送
+        # 推送：标题已由通知渠道单独展示，正文原样发出（不套「详情:」）
         push_results = []
         if self.notifier.is_enabled:
+            body = digest.get("push_text") or digest["summary_text"]
+            if body.startswith("## "):
+                body = "\n".join(body.splitlines()[1:]).lstrip("\n")
             push_results = self.notifier.notify(
                 title=f"📊 自选股智能日报 ({digest['date']})",
-                content=digest["summary_text"],
+                content=body,
                 level=NotificationLevel.INFO,
+                raw_content=True,
             )
         else:
             logger.warning("消息推送未启用或无已配置的渠道")
 
         return {"digest": digest, "push_results": push_results}
+
+    @staticmethod
+    def _build_push_text(digest: dict) -> str:
+        """推送正文：把建议入手/出手价提到最前，后接完整日报。
+
+        落盘的 Markdown 仍用 summary_text；这里只影响手机端推送的正文顺序。
+        """
+        body = digest.get("summary_text") or ""
+        if body.startswith("## "):
+            body = "\n".join(body.splitlines()[1:]).lstrip("\n")
+
+        items = []
+        for key in ("bullish", "neutral", "bearish"):
+            items.extend(digest.get(key) or [])
+
+        def fmt(r: dict, key: str) -> Optional[str]:
+            value = _finite_number(r.get(key))
+            return f"{value:.2f}" if value is not None else None
+
+        lines = ["### 💰 参考价速查（统计参考）", ""]
+        for item in items:
+            r = item.get("trade_range")
+            if not isinstance(r, dict):
+                continue
+            buy, sell = fmt(r, "buy"), fmt(r, "sell")
+            if buy is None or sell is None:
+                continue
+            line = f"- {item.get('name') or item.get('code', '')} ({item.get('code', '')})"
+            current = fmt(r, "price")
+            if current is not None:
+                line += f" · 现价 {current}"
+            line += f" · 建议入手 {buy} / 建议出手 {sell}"
+            stop = fmt(r, "stop_loss")
+            if stop is not None:
+                line += f" · 止损 {stop}"
+            lines.append(line)
+
+        if len(lines) == 2:
+            return body
+        covered = len(lines) - 2
+        total = digest.get("total")
+        if isinstance(total, bool) or not isinstance(total, int) or total < len(items):
+            total = len(items)
+        lines.extend([
+            "",
+            f"> 当前覆盖 {covered}/{total} 只；统计参考，非买卖指令。完整分析见下",
+            "",
+        ])
+        return "\n".join(lines + [body])
 
     # ==================== 文本组装 ====================
 
@@ -352,28 +406,50 @@ class SmartDigestService:
 
     @staticmethod
     def _append_trade_range(lines: list, item: dict, indent: str) -> None:
-        """把区间渲染成两行，措辞保持「参考」而非买卖指令。"""
+        """两行操作参考：建议入手/出手价、止损，附区间与现价口径。
+
+        价格来自 forecast.high 的统计分位数；旧日报缺字段时静默省略对应片段。
+        """
         r = item.get("trade_range")
         if not isinstance(r, dict):
             return
-        lines.append(
-            f"{indent}📐 今日参考区间 {float(r['low']):.2f} ~ {float(r['high']):.2f}"
-            f" · 买入参考 {float(r['buy']):.2f} · 卖出参考 {float(r['sell']):.2f}"
-        )
-        stop = r.get("stop_loss")
-        stop_pct = r.get("stop_loss_pct")
-        # 旧格式日报没有止损字段，静默省略该行
-        if isinstance(stop, (int, float)) and isinstance(stop_pct, (int, float)):
-            lines.append(
-                f"{indent}   低价参考 {float(r['low']):.2f} · "
-                f"止损参考 {float(stop):.2f}（较买入价 -{float(stop_pct):.1f}%）"
-            )
-        cov = r.get("range_coverage")
-        extra = f" · 区间回测覆盖率 {float(cov) * 100:.0f}%" if isinstance(cov, (int, float)) else ""
-        lines.append(
-            f"{indent}   近 {r.get('sample_days', 0)} 日分位数（P25 低点 / P75 高点）{extra}；"
-            "统计参考，非投资建议"
-        )
+
+        def price(key: str) -> Optional[str]:
+            value = _finite_number(r.get(key))
+            return f"{value:.2f}" if value is not None else None
+
+        buy, sell, low, high = price("buy"), price("sell"), price("low"), price("high")
+        if not all((buy, sell, low, high)):
+            return
+
+        parts = [f"💰 建议入手 {buy} · 建议出手 {sell}"]
+        stop, stop_pct = price("stop_loss"), _finite_number(r.get("stop_loss_pct"))
+        if stop is not None and stop_pct is not None:
+            parts.append(f"止损 {stop}（-{stop_pct:.1f}%）")
+        lines.append(f"{indent}{' · '.join(parts)}")
+
+        context = [f"📐 今日参考区间 {low} ~ {high}"]
+        current = price("price")
+        if current is not None:
+            context.append(f"现价 {current}")
+        samples = _finite_number(r.get("sample_days"))
+        if samples is not None:
+            context.append(f"近 {int(samples)} 日分位")
+        cov = _finite_number(r.get("range_coverage"))
+        if cov is not None:
+            context.append(f"覆盖 {cov * 100:.0f}%")
+        lines.append(f"{indent}{' · '.join(context)}；统计参考，非投资建议")
+
+    @staticmethod
+    def _quality_note_text(quality: dict, below: bool) -> str:
+        """日报里的「说明」：默认短句，旧版长说明不重复准确率/基线/降权。"""
+        note = quality.get("note")
+        if isinstance(note, str) and note.strip():
+            text = note.strip()
+            if text.startswith(("模型平均准确率", "弱模型 ")):
+                return "勿当强信号" if below else "质量正常"
+            return text
+        return "弱于基线，勿当强信号" if below else "质量正常"
 
     @staticmethod
     def _quality_warning(item: dict) -> Optional[str]:
@@ -381,10 +457,7 @@ class SmartDigestService:
         quality = item.get("quality")
         if not isinstance(quality, dict) or not quality.get("below_baseline"):
             return None
-        note = quality.get("note")
-        if isinstance(note, str) and note.strip():
-            return note.strip()
-        return "弱于基线，勿当强信号"
+        return SmartDigestService._quality_note_text(quality, True)
 
     @staticmethod
     def _credibility_card(item: dict) -> Optional[str]:
@@ -399,46 +472,32 @@ class SmartDigestService:
             return None
 
         below = bool(quality.get("below_baseline"))
-        note = quality.get("note")
-        if isinstance(note, str) and note.strip():
-            note_text = note.strip()
-        elif below:
-            note_text = "弱于基线，勿当强信号"
-        else:
-            note_text = "质量正常"
-
-        score = item.get("score", 0) or 0
-        stars = item.get("stars") or 0
-        try:
-            stars = int(stars)
-        except (TypeError, ValueError):
-            stars = 0
-        if stars < 0:
-            stars = 0
+        note_text = SmartDigestService._quality_note_text(quality, below)
 
         lines = [
             "⚠️ 📎 可信摘要" if below else "📎 可信摘要",
-            (
-                f"- 信号: {item.get('signal', '')} · 评分 {float(score):+.1f} · "
-                f"{'⭐' * stars}"
-            ),
             f"- 质量: {'弱于基线' if below else '优于基线'}",
-            f"- 说明: {note_text}",
         ]
-        factors = item.get("key_factors") or []
-        if isinstance(factors, (list, tuple)):
-            shown = [str(factor).strip() for factor in list(factors)[:3] if str(factor).strip()]
-            if shown:
-                lines.append("- 依据: " + "、".join(shown))
-        lines.extend(_quality_evidence_lines(quality, item))
+        # 默认说明与质量行重复，只在有自定义说明时保留
+        if note_text not in {"质量正常", "勿当强信号", "弱于基线，勿当强信号"}:
+            lines.append(f"- 说明: {note_text}")
+        # 信号/评分/星级/置信度/关键因子在条目标题已给，卡片只放质量证据
+        evidence = [
+            line for line in _quality_evidence_lines(quality, item)
+            if not line.startswith("- 置信度:")
+        ]
+        lines.extend(evidence)
         return "\n".join(lines)
 
     def _append_credibility_card(self, lines: list, item: dict, indent: str) -> None:
         card = self._credibility_card(item)
         if not card:
             return
+        # PushPlus 会把连续缩进行并成一段，空行才能让卡片独立成块
+        lines.append("")
         for line in card.splitlines():
             lines.append(f"{indent}{line}")
+        lines.append("")
 
     def _build_markdown_digest(self, digest: dict, code_names: dict) -> str:
         """组装 Markdown 格式的智能日报"""

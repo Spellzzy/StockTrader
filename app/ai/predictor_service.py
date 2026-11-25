@@ -259,10 +259,8 @@ class PredictorService:
 
         quality_note = ""
         if below_baseline and mean_accuracy is not None:
-            quality_note = (
-                f"模型平均准确率 {mean_accuracy:.1%} 低于三分类随机基线 "
-                f"{self.quality_baseline:.1%}，不具备可靠预测能力，结论仅供参考"
-            )
+            # 数字放这里就够；「无预测能力 / 已降权」由卡片标题和质量行表达
+            quality_note = f"弱模型 {mean_accuracy:.1%} < 基线 {self.quality_baseline:.1%}"
 
         return {
             "signal": signal,

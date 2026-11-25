@@ -31,7 +31,7 @@ def test_weak_models_are_downweighted_and_capped_at_two_stars():
     assert quality["below_baseline"] is True
     assert quality["factor"] < 1.0
     assert quality["mean_accuracy"] < quality["baseline"]
-    assert "随机基线" in quality["note"]
+    assert quality["note"] == "弱模型 27.0% < 基线 33.3%"
     assert combined["stars"] <= 2
     # 评分要明显低于同等信号强度的可靠模型
     strong = svc._combine_predictions(_pred(accuracy=0.55), _pred(accuracy=0.50), None)

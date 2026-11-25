@@ -84,9 +84,10 @@ def test_generate_projects_quality_onto_bullish_and_bearish_items(monkeypatch):
     assert "⚠️ 可信度:" not in plain
     assert "- 质量: 弱于基线" in md
     assert "- 质量: 弱于基线" in plain
-    assert "- 依据: 样例因子" in md
-    assert "- 信号: 看涨 · 评分 +12.0 · ⭐⭐" in md
-    assert "- 信号: 看跌 · 评分 -18.0 · ⭐" in plain
+    assert "- 说明: 准确率低于随机基线，信号已降权" in md
+    assert "- 说明: 准确率低于随机基线，信号已降权" in plain
+    assert "- 依据:" not in md and "- 依据:" not in plain
+    assert "- 信号:" not in md and "- 信号:" not in plain
 
 
 def test_markdown_and_plain_warn_with_default_note_when_quality_note_empty():
@@ -134,9 +135,8 @@ def test_markdown_and_plain_warn_with_default_note_when_quality_note_empty():
     }
     md = svc._build_markdown_digest(digest, {})
     plain = svc._build_plain_digest(digest, {})
-    assert "- 说明: 弱于基线，勿当强信号" in md
-    assert "- 说明: 弱于基线，勿当强信号" in plain
-    assert md.count("- 说明: 弱于基线，勿当强信号") == 2
+    assert "- 说明:" not in md and "- 说明:" not in plain
+    assert md.count("⚠️ 📎 可信摘要") == 2
     assert "⚠️ 📎 可信摘要" in md
     assert "⚠️ 可信度:" not in md
     assert "⚠️ 可信度:" not in plain
@@ -287,23 +287,16 @@ def test_weak_bullish_and_bearish_render_full_card_in_markdown_and_plain():
 
     bull_card = "\n".join([
         "⚠️ 📎 可信摘要",
-        "- 信号: 看涨 · 评分 +12.0 · ⭐⭐",
         "- 质量: 弱于基线",
         "- 说明: 准确率低于随机基线，信号已降权",
-        "- 依据: 动量、放量",
         "- 准确率: 27.0% · 基线 33.3%",
         "- 降权: 0.40",
-        "- 置信度: 55.0%",
     ])
     bear_card = "\n".join([
         "⚠️ 📎 可信摘要",
-        "- 信号: 看跌 · 评分 -18.0 · ⭐",
         "- 质量: 弱于基线",
-        "- 说明: 弱于基线，勿当强信号",
-        "- 依据: 破位",
         "- 准确率: 27.0% · 基线 33.3%",
         "- 降权: 0.40",
-        "- 置信度: 55.0%",
     ])
     assert _credibility_card(bull) == bull_card
     assert _credibility_card(bear) == bear_card
@@ -321,11 +314,7 @@ def test_strong_card_says_better_than_baseline_without_scare_copy():
     )
     expected = "\n".join([
         "📎 可信摘要",
-        "- 信号: 看涨 · 评分 +8.5 · ⭐⭐⭐⭐",
         "- 质量: 优于基线",
-        "- 说明: 质量正常",
-        "- 依据: 均线多头、放量、北向流入",
-        "- 置信度: 55.0%",
     ])
     assert _credibility_card(item) == expected
     for word in _SCARE:
@@ -405,7 +394,7 @@ def test_evidence_lines_appear_only_when_quality_has_numbers():
     assert "- 说明: 样本一般" in card
     assert "- 准确率: 27.3% · 基线 33.3%" in card
     assert "- 降权: 0.40" in card
-    assert "- 置信度: 12.5%" in card
+    assert "置信度:" not in card  # 条目标题已给，卡片不重复
     assert "- 模型数: 3" in card
     assert "⚠️" not in card
 
@@ -454,7 +443,7 @@ def test_evidence_lines_appear_only_when_quality_has_numbers():
     junk.pop("confidence")
     junk_card = _credibility_card(junk)
     assert "- 质量: 优于基线" in junk_card
-    assert "- 说明: 质量正常" in junk_card
+    assert "- 说明:" not in junk_card
     assert "准确率:" not in junk_card
     assert "降权:" not in junk_card
     assert "模型数:" not in junk_card
@@ -502,3 +491,18 @@ def test_generate_copies_models_used_onto_card(monkeypatch):
         assert "- 模型数: 3" in text
         assert "- 质量: 弱于基线" in text
         assert "⚠️ 可信度:" not in text
+
+
+def test_verbose_quality_note_is_shortened_in_digest():
+    legacy = dict(
+        WEAK_QUALITY,
+        note="模型平均准确率 26.6% 低于三分类随机基线 33.3%，不具备可靠预测能力，结论仅供参考",
+    )
+    current = dict(WEAK_QUALITY, note="弱模型 26.6% < 基线 33.3%")
+    for note in (legacy["note"], current["note"]):
+        item = _item("sh600001", "弱看涨", "看涨", 12.0, 2, ["动量"],
+                     quality=dict(WEAK_QUALITY, note=note))
+        md, plain = _render(_digest(bullish=[item], neutral=[item]))
+        assert "- 说明:" not in md and "- 说明:" not in plain
+        assert "不具备可靠预测能力" not in md and "不具备可靠预测能力" not in plain
+        assert "⚠️ 可信度: 勿当强信号" in md and "⚠️ 可信度: 勿当强信号" in plain

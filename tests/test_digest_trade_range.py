@@ -116,7 +116,7 @@ def _with_ranges():
     for item in items:
         item["trade_range"] = {
             "low": 9.5, "high": 10.8, "buy": 9.83, "sell": 10.48,
-            "stop_loss": 9.34, "stop_loss_pct": 5.0,
+            "stop_loss": 9.34, "stop_loss_pct": 5.0, "price": 10.2,
             "sample_days": 120, "range_coverage": 0.62,
         }
     return items
@@ -125,12 +125,11 @@ def _with_ranges():
 def test_markdown_renders_all_three_sections():
     svc = SmartDigestService()
     text = svc._build_markdown_digest(_digest(_with_ranges()), {})
-    assert text.count("📐 今日参考区间") == 3
-    assert "买入参考 9.83" in text and "卖出参考 10.48" in text
-    assert text.count("低价参考 9.50") == 3
-    assert text.count("止损参考 9.34") == 3
-    assert "-5.0%" in text
-    assert "区间回测覆盖率 62%" in text
+    assert text.count("💰 建议入手 9.83 · 建议出手 10.48") == 3
+    assert text.count("止损 9.34（-5.0%）") == 3
+    assert text.count("📐 今日参考区间 9.50 ~ 10.80") == 3
+    assert text.count("现价 10.20") == 3
+    assert "覆盖 62%" in text
     assert "统计参考，非投资建议" in text
 
 
@@ -141,7 +140,52 @@ def test_old_format_without_stop_loss_omits_line():
         del item["trade_range"]["stop_loss_pct"]
     text = SmartDigestService()._build_markdown_digest(_digest(items), {})
     assert "今日参考区间" in text
-    assert "止损参考" not in text
+    assert "止损" not in text
+
+
+def test_push_text_puts_entry_exit_prices_first():
+    digest = _digest(_with_ranges())
+    digest["summary_text"] = "## 📊 自选股智能日报 (2026-11-09 10:30)\n\n完整分析正文"
+    body = SmartDigestService._build_push_text(digest)
+    assert body.startswith("### 💰 参考价速查")
+    assert "- A (sh600519) · 现价 10.20 · 建议入手 9.83 / 建议出手 10.48 · 止损 9.34" in body
+    assert "当前覆盖 3/3 只" in body
+    assert body.splitlines()[-1] == "完整分析正文"
+    assert body.count("## 📊") == 0
+
+    no_ranges = _digest(_items())
+    no_ranges["summary_text"] = "## 标题\n\n正文"
+    assert SmartDigestService._build_push_text(no_ranges) == "正文"
+
+
+def test_generate_and_push_sends_report_body_without_duplicate_title(monkeypatch):
+    from unittest.mock import MagicMock
+
+    svc = SmartDigestService()
+    digest = _digest(_with_ranges())
+    digest["summary_text"] = "## 📊 自选股智能日报 (2026-11-09 10:30)\n\n💰 建议入手 9.83"
+    notifier = MagicMock()
+    notifier.is_enabled = True
+    notifier.notify.return_value = [("PushPlus", True, "")]
+    monkeypatch.setattr(svc, "_notifier", notifier)
+    monkeypatch.setattr(svc, "generate", lambda **kwargs: digest)
+
+    assert svc.generate_and_push()["push_results"] == [("PushPlus", True, "")]
+    kwargs = notifier.notify.call_args.kwargs
+    assert kwargs["raw_content"] is True
+    assert kwargs["content"] == "💰 建议入手 9.83"
+    assert "## " not in kwargs["content"]
+
+
+def test_notification_message_keeps_raw_report_content():
+    from app.services.notification.base import NotificationMessage
+
+    msg = NotificationMessage(title="日报", content="💰 建议入手 9.83", raw_content=True)
+    assert msg.markdown == "💰 建议入手 9.83"
+    assert msg.plain_text == "💰 建议入手 9.83"
+
+    wrapped = NotificationMessage(title="预警", content="跌幅 3%")
+    assert "## 预警" in wrapped.markdown and "**详情**: 跌幅 3%" in wrapped.markdown
 
 
 def test_plain_digest_renders_range():

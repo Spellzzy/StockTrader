@@ -90,6 +90,7 @@ class NotificationManager:
         price: Optional[float] = None,
         change_percent: Optional[float] = None,
         channel: Optional[str] = None,
+        raw_content: bool = False,
     ) -> List[Tuple[str, bool, str]]:
         """同步发送通知 (内部使用 asyncio.run)
 
@@ -124,6 +125,7 @@ class NotificationManager:
             price=price,
             change_percent=change_percent,
             timestamp=datetime.now(),
+            raw_content=raw_content,
         )
 
         # 使用 asyncio 并行发送

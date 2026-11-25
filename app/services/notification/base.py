@@ -26,10 +26,13 @@ class NotificationMessage:
     price: Optional[float] = None
     change_percent: Optional[float] = None
     timestamp: datetime = field(default_factory=datetime.now)
+    raw_content: bool = False  # 整篇日报：标题由渠道单独展示，正文不再套「详情:」
 
     @property
     def markdown(self) -> str:
         """生成 Markdown 格式消息"""
+        if self.raw_content:
+            return self.content
         lines = [f"## {self.title}", ""]
 
         if self.stock_code:
@@ -52,6 +55,8 @@ class NotificationMessage:
     @property
     def plain_text(self) -> str:
         """生成纯文本格式消息"""
+        if self.raw_content:
+            return self.content
         emoji_map = {
             NotificationLevel.ALERT: "🚨",
             NotificationLevel.WARNING: "⚠️",
