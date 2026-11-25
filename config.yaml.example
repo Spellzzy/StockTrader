@@ -4,7 +4,7 @@
 #
 # 密钥推荐用环境变量注入，避免写进 config.yaml（优先级高于本文件）:
 #   STOCK_AI_AI__LLM__API_KEY            → ai.llm.api_key
-#   STOCK_AI_NOTIFICATION__PUSHPLUS__TOKEN → notification.pushplus.token
+#   STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN → notification.channels.pushplus.token
 # 规则：前缀 STOCK_AI_ + 双下划线分隔层级，段名/键名大小写不敏感。
 
 # 数据库配置

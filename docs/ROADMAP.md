@@ -109,8 +109,9 @@
 
 ## 遗留与已知风险
 
-1. **`config.yaml` 里有明文 PushPlus token**（文件已被 gitignore）。建议改用环境变量
-   `STOCK_AI_NOTIFICATION__PUSHPLUS__TOKEN`，迁移后再把 yaml 里的值清空。
+1. ~~**`config.yaml` 里有明文 PushPlus token**（文件已被 gitignore）。建议改用环境变量~~
+   ✅ 已迁移：密钥放项目根目录 `.env`（已 gitignore）或系统环境变量
+   `STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN`，`config.yaml` 已清空。
 2. **交易日历的节假日需要人工维护**：`config.yaml` 的 `market.holidays`，
    每年初按交易所公告填一次，否则只会按周末判断。
 3. **测试覆盖率约 24%**：`smart_digest`、`pool_loader`、`watch`、TUI、可视化仍是空白，

@@ -13,6 +13,9 @@
     # 仅预览（不推送）
     python scripts/scheduled_digest.py --no-push
 
+    # 只看实际推送正文（不推送、不落盘）
+    python scripts/scheduled_digest.py --dry-run
+
 定时任务配置示例:
 
     Windows 计划任务 (schtasks) —— 必须用绝对路径，计划任务的默认工作目录是 System32:
@@ -73,6 +76,7 @@ def main():
     parser.add_argument("--dl", action="store_true", help="使用深度学习模型")
     parser.add_argument("--llm", action="store_true", help="追加 LLM 深度分析")
     parser.add_argument("--no-push", action="store_true", help="不推送（仅生成并打印）")
+    parser.add_argument("--dry-run", action="store_true", help="只打印实际推送正文，不推送、不落盘")
     parser.add_argument("--auto-alert", action="store_true", help="自动配置高风险预警")
     parser.add_argument("--force", action="store_true", help="非交易日也强制执行")
     parser.add_argument("--top", type=int, default=3, help="LLM 分析看涨 Top N")
@@ -90,7 +94,10 @@ def main():
 
     logger.info("=" * 60)
     logger.info("开始生成智能日报")
-    logger.info(f"参数: dl={args.dl}, llm={args.llm}, push={not args.no_push}")
+    logger.info(
+        f"参数: dl={args.dl}, llm={args.llm}, "
+        f"push={not (args.no_push or args.dry_run)}, dry_run={args.dry_run}"
+    )
 
     digest = None
     try:
@@ -110,7 +117,7 @@ def main():
         logger.info(f"自选股数量: {len(watched)}")
 
         # 生成日报
-        if args.no_push:
+        if args.no_push or args.dry_run:
             digest = svc.generate(
                 use_dl=args.dl,
                 use_llm=args.llm,
@@ -153,6 +160,13 @@ def main():
                     logger.warning("无可用推送渠道")
             else:
                 logger.error("日报生成失败")
+
+        if args.dry_run:
+            if not digest:
+                return
+            print(digest.get("push_text") or digest["summary_text"])
+            logger.info("dry-run 完成：未推送、未落盘")
+            return
 
         # 落盘（推送之外留一份可回溯的文件）
         if digest:

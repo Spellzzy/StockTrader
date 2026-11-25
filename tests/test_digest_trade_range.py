@@ -69,6 +69,8 @@ def test_attach_respects_limit_and_batches_quote(patched):
         "as_of": "20261109103000", "sample_days": 120,
         "range_coverage": 0.62, "note": "统计参考，非投资建议",
     }
+    # 未算参考价的那只也拿到批量 quote 里的现价
+    assert [x["quote_price"] for x in items] == [10.2, 10.2, 10.2]
     # 一次批量行情，而不是每只一次
     assert patched == [("sh600519", "sz000001", "sh601519")]
 
@@ -149,13 +151,23 @@ def test_push_text_puts_entry_exit_prices_first():
     body = SmartDigestService._build_push_text(digest)
     assert body.startswith("### 💰 参考价速查")
     assert "- A (sh600519) · 现价 10.20 · 建议入手 9.83 / 建议出手 10.48 · 止损 9.34" in body
-    assert "当前覆盖 3/3 只" in body
+    assert "参考价覆盖 3/3 只" in body
     assert body.splitlines()[-1] == "完整分析正文"
     assert body.count("## 📊") == 0
 
     no_ranges = _digest(_items())
     no_ranges["summary_text"] = "## 标题\n\n正文"
     assert SmartDigestService._build_push_text(no_ranges) == "正文"
+
+    # 没算参考价但有批量 quote 的股票，速查里仍显示现价
+    mixed = _digest(_items())
+    mixed["bullish"][0]["trade_range"] = _with_ranges()[0]["trade_range"]
+    for item in mixed["bullish"] + mixed["neutral"] + mixed["bearish"]:
+        item["quote_price"] = 10.2
+    body = SmartDigestService._build_push_text(mixed)
+    assert "- A (sh600519) · 现价 10.20 · 建议入手 9.83" in body
+    assert "- C (sh601519) · 现价 10.20" in body
+    assert "参考价覆盖 1/3 只，另 2 只仅显示现价" in body
 
 
 def test_generate_and_push_sends_report_body_without_duplicate_title(monkeypatch):

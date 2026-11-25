@@ -1,13 +1,14 @@
 """全局配置管理
 
 配置优先级（后者覆盖前者）:
-    DEFAULT_CONFIG < config.yaml < 环境变量
+    DEFAULT_CONFIG < config.yaml < 项目根目录 .env < 进程环境变量
 
 环境变量规则:
     前缀 STOCK_AI_，用双下划线分隔层级，段名与键名大小写不敏感。
     例: STOCK_AI_AI__LLM__API_KEY        → ai.llm.api_key
-        STOCK_AI_NOTIFICATION__PUSHPLUS__TOKEN → notification.pushplus.token
-    推荐用环境变量存放密钥，避免写入 config.yaml。
+        STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN → notification.channels.pushplus.token
+    推荐用 .env 或环境变量存放密钥，避免写入 config.yaml。
+    .env 只在对应变量未由进程/系统设置时生效，不覆盖真实环境变量。
     值会尝试解析为 bool / int / float，失败则保留字符串。
 """
 
@@ -164,8 +165,23 @@ def _apply_env_overrides(config: dict):
         _set_nested(config, path, _coerce_env_value(raw_value))
 
 
+def _load_dotenv() -> None:
+    """读取项目根目录 .env；只填未被真实环境变量占用的键。"""
+    path = PROJECT_ROOT / ".env"
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key:
+            os.environ.setdefault(key, value.strip().strip("'\""))
+
+
 def load_config() -> dict:
-    """加载配置：默认值 → config.yaml → 环境变量"""
+    """加载配置：默认值 → config.yaml → .env → 进程环境变量"""
     config_path = PROJECT_ROOT / "config.yaml"
     # 必须深拷贝：否则对返回值的合并/路径转换会污染模块级 DEFAULT_CONFIG
     config = copy.deepcopy(DEFAULT_CONFIG)
@@ -176,6 +192,7 @@ def load_config() -> dict:
             if user_config:
                 _deep_merge(config, user_config)
 
+    _load_dotenv()
     _apply_env_overrides(config)
 
     # 将相对路径转为绝对路径

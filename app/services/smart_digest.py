@@ -309,32 +309,39 @@ class SmartDigestService:
             return f"{value:.2f}" if value is not None else None
 
         lines = ["### 💰 参考价速查（统计参考）", ""]
+        with_range = 0
+        price_only = 0
         for item in items:
+            name = f"- {item.get('name') or item.get('code', '')} ({item.get('code', '')})"
             r = item.get("trade_range")
-            if not isinstance(r, dict):
+            buy, sell = (fmt(r, "buy"), fmt(r, "sell")) if isinstance(r, dict) else (None, None)
+            if buy is not None and sell is not None:
+                with_range += 1
+                current = fmt(r, "price")
+                line = name + (f" · 现价 {current}" if current else "")
+                line += f" · 建议入手 {buy} / 建议出手 {sell}"
+                stop = fmt(r, "stop_loss")
+                if stop is not None:
+                    line += f" · 止损 {stop}"
+                lines.append(line)
                 continue
-            buy, sell = fmt(r, "buy"), fmt(r, "sell")
-            if buy is None or sell is None:
+            current = _finite_number(item.get("quote_price"))
+            if current is None:
                 continue
-            line = f"- {item.get('name') or item.get('code', '')} ({item.get('code', '')})"
-            current = fmt(r, "price")
-            if current is not None:
-                line += f" · 现价 {current}"
-            line += f" · 建议入手 {buy} / 建议出手 {sell}"
-            stop = fmt(r, "stop_loss")
-            if stop is not None:
-                line += f" · 止损 {stop}"
-            lines.append(line)
+            price_only += 1
+            lines.append(f"{name} · 现价 {current:.2f}")
 
         if len(lines) == 2:
             return body
-        covered = len(lines) - 2
         total = digest.get("total")
         if isinstance(total, bool) or not isinstance(total, int) or total < len(items):
             total = len(items)
+        note = f"参考价覆盖 {with_range}/{total} 只"
+        if price_only:
+            note += f"，另 {price_only} 只仅显示现价"
         lines.extend([
             "",
-            f"> 当前覆盖 {covered}/{total} 只；统计参考，非买卖指令。完整分析见下",
+            f"> {note}；统计参考，非买卖指令。完整分析见下",
             "",
         ])
         return "\n".join(lines + [body])
@@ -370,6 +377,12 @@ class SmartDigestService:
         except Exception as e:
             logger.warning(f"日报区间行情获取失败，跳过: {e}")
             return
+
+        # 批量 quote 已经取到全部现价，未算参考价的股票也能在速查里显示
+        for item in items:
+            quote_price = _finite_number((quotes.get(item.get("code")) or {}).get("price"))
+            if quote_price is not None:
+                item["quote_price"] = quote_price
 
         service = HighForecastService(market=market)
         ranked = sorted(

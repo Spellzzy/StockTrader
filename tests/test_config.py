@@ -33,10 +33,34 @@ def test_load_config_does_not_mutate_defaults():
 
 def test_env_override_sets_nested_value(monkeypatch, tmp_path):
     monkeypatch.setattr(config_mod, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setenv("STOCK_AI_NOTIFICATION__PUSHPLUS__TOKEN", "env-token")
+    monkeypatch.setenv("STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN", "env-token")
 
     cfg = config_mod.load_config()
-    assert cfg["notification"]["pushplus"]["token"] == "env-token"
+    assert cfg["notification"]["channels"]["pushplus"]["token"] == "env-token"
+
+
+def test_dotenv_fills_missing_env(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text(
+        "STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN=dotenv-token\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_mod, "PROJECT_ROOT", tmp_path)
+    monkeypatch.delenv("STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN", raising=False)
+
+    cfg = config_mod.load_config()
+    assert cfg["notification"]["channels"]["pushplus"]["token"] == "dotenv-token"
+
+
+def test_real_env_beats_dotenv(monkeypatch, tmp_path):
+    (tmp_path / ".env").write_text(
+        "STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN=dotenv-token\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_mod, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setenv("STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN", "real-token")
+
+    cfg = config_mod.load_config()
+    assert cfg["notification"]["channels"]["pushplus"]["token"] == "real-token"
 
 
 def test_env_override_coerces_bool(monkeypatch, tmp_path):

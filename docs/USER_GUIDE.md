@@ -1007,6 +1007,12 @@ schtasks /create /tn "StockAI_PM" /tr "python scripts/scheduled_digest.py" /sc d
 
 > 定时脚本会自动判断交易日，非交易日不会执行。
 
+调推送格式时可以先 `python scripts/scheduled_digest.py --dry-run`：只把实际推送正文打到终端，不推送、不落盘。
+
+推送密钥不要写在 `config.yaml`：在项目根目录 `.env` 里放
+`STOCK_AI_NOTIFICATION__CHANNELS__PUSHPLUS__TOKEN=xxx`（`.env` 已被 git 忽略），
+或设置同名系统环境变量；进程环境变量优先级高于 `.env`。
+
 #### 工作原理
 
 ```
