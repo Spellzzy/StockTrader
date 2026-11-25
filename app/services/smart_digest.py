@@ -406,7 +406,7 @@ class SmartDigestService:
 
     @staticmethod
     def _append_trade_range(lines: list, item: dict, indent: str) -> None:
-        """两行操作参考：建议入手/出手价、止损，附区间与现价口径。
+        """操作参考按短列表分项输出，避免 PushPlus 把多行并成一长段。
 
         价格来自 forecast.high 的统计分位数；旧日报缺字段时静默省略对应片段。
         """
@@ -422,23 +422,31 @@ class SmartDigestService:
         if not all((buy, sell, low, high)):
             return
 
-        parts = [f"💰 建议入手 {buy} · 建议出手 {sell}"]
+        bullet = f"{indent}- "
+        if not lines or lines[-1].strip():
+            lines.append("")
+        lines.append(f"{bullet}💰 建议入手 {buy} · 建议出手 {sell}")
         stop, stop_pct = price("stop_loss"), _finite_number(r.get("stop_loss_pct"))
         if stop is not None and stop_pct is not None:
-            parts.append(f"止损 {stop}（-{stop_pct:.1f}%）")
-        lines.append(f"{indent}{' · '.join(parts)}")
+            lines.append(f"{bullet}🛑 止损 {stop}（-{stop_pct:.1f}%）")
 
-        context = [f"📐 今日参考区间 {low} ~ {high}"]
+        range_line = f"📐 今日参考区间 {low} ~ {high}"
         current = price("price")
         if current is not None:
-            context.append(f"现价 {current}")
+            range_line += f" · 现价 {current}"
+        lines.append(f"{bullet}{range_line}")
+
+        basis = []
         samples = _finite_number(r.get("sample_days"))
         if samples is not None:
-            context.append(f"近 {int(samples)} 日分位")
+            basis.append(f"近 {int(samples)} 日分位")
         cov = _finite_number(r.get("range_coverage"))
         if cov is not None:
-            context.append(f"覆盖 {cov * 100:.0f}%")
-        lines.append(f"{indent}{' · '.join(context)}；统计参考，非投资建议")
+            basis.append(f"覆盖 {cov * 100:.0f}%")
+        if basis:
+            lines.append(f"{bullet}{' · '.join(basis)}；统计参考，非投资建议")
+        if not lines or lines[-1].strip():
+            lines.append("")
 
     @staticmethod
     def _quality_note_text(quality: dict, below: bool) -> str:
