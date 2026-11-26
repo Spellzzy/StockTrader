@@ -18,11 +18,19 @@ function showError(err) {
 }
 function clearError() { $('alert').classList.add('hidden'); }
 
+function apiError(payload, res) {
+  let msg = payload.detail || payload.error || ('HTTP ' + res.status);
+  if (res.status === 500 || /ImportError|cannot import name/.test(msg)) {
+    msg += ' · 若刚更新代码，请重启 Web 服务（关闭后重新双击 启动.bat）';
+  }
+  return new Error(msg);
+}
+
 async function api(path) {
   const res = await fetch(path);
   let payload;
   try { payload = await res.json(); } catch (e) { throw new Error('服务返回格式异常'); }
-  if (!res.ok || !payload.ok) throw new Error(payload.detail || payload.error || ('HTTP ' + res.status));
+  if (!res.ok || !payload.ok) throw apiError(payload, res);
   return payload.data;
 }
 
@@ -517,7 +525,7 @@ async function post(path, body) {
   });
   let payload;
   try { payload = await res.json(); } catch (e) { throw new Error('服务返回格式异常'); }
-  if (!res.ok || !payload.ok) throw new Error(payload.detail || payload.error || ('HTTP ' + res.status));
+  if (!res.ok || !payload.ok) throw apiError(payload, res);
   return payload.data;
 }
 
