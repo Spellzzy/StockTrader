@@ -22,7 +22,7 @@ async function api(path) {
   const res = await fetch(path);
   let payload;
   try { payload = await res.json(); } catch (e) { throw new Error('服务返回格式异常'); }
-  if (!res.ok || !payload.ok) throw new Error(payload.error || ('HTTP ' + res.status));
+  if (!res.ok || !payload.ok) throw new Error(payload.detail || payload.error || ('HTTP ' + res.status));
   return payload.data;
 }
 
@@ -517,7 +517,7 @@ async function post(path, body) {
   });
   let payload;
   try { payload = await res.json(); } catch (e) { throw new Error('服务返回格式异常'); }
-  if (!res.ok || !payload.ok) throw new Error(payload.error || ('HTTP ' + res.status));
+  if (!res.ok || !payload.ok) throw new Error(payload.detail || payload.error || ('HTTP ' + res.status));
   return payload.data;
 }
 

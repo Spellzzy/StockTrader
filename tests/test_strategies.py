@@ -115,6 +115,15 @@ def test_custom_strategy_is_autodiscovered(tmp_path, isolate_config):
     assert any(s["name"] == "my_custom" for s in list_strategies())
 
 
+def test_param_grid_tolerates_stale_strategy_module(monkeypatch):
+    """Web 进程未重启时旧 strategy 模块可能没有 helper，不能让 optimize 500"""
+    import app.services.strategy as strategy_mod
+
+    monkeypatch.delattr(strategy_mod, "get_custom_param_grids", raising=False)
+    grid = generate_param_grid("ma_cross")
+    assert {"short": 5, "long": 10} in grid
+
+
 def test_custom_param_grid_is_used_by_optimize(tmp_path, isolate_config):
     (tmp_path / "my_custom.py").write_text(CUSTOM_SOURCE, encoding="utf-8")
     isolate_config["strategies"] = {"enabled": True, "dir": str(tmp_path)}

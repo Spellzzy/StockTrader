@@ -132,13 +132,28 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
     )
 
 
+def _safe_error_detail(exc: Exception) -> str:
+    """给前端一句可诊断但不泄露密钥的异常摘要"""
+    text = f"{type(exc).__name__}: {exc}"
+    text = re.sub(
+        r"(?i)(token|secret|password|api[_-]?key)([\"']?\s*[:=]\s*)([^\s,;]+)",
+        r"\1\2***",
+        text,
+    )
+    return text[:240]
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
     """统一错误格式，不把堆栈回传给前端"""
     logger.exception(f"API 异常 {request.method} {request.url.path}: {exc}")
     return JSONResponse(
         status_code=500,
-        content={"ok": False, "error": "服务内部错误，详情见 logs/stock-ai.log"},
+        content={
+            "ok": False,
+            "error": "服务内部错误，详情见 logs/stock-ai.log",
+            "detail": _safe_error_detail(exc),
+        },
     )
 
 
@@ -915,8 +930,15 @@ async def lab_chart(req: StrategyChartRequest) -> dict:
     """生成策略买卖信号图，返回可直嵌 <img> 的 data URL。"""
     from app.ai.feature_engine import FeatureEngine
     from app.services.market_service import MarketService
-    from app.services.strategy import coerce_strategy_params, get_strategy
+    from app.services.strategy import get_strategy
     from app.visualization.charts import ChartService
+
+    try:
+        from app.services.strategy import coerce_strategy_params
+    except ImportError:
+        # 兼容尚未重启的旧 Web 进程
+        def coerce_strategy_params(params: dict) -> dict:
+            return {str(k): v for k, v in (params or {}).items()}
 
     def collect() -> dict:
         df = MarketService().get_kline_df(req.code, "day", req.days)

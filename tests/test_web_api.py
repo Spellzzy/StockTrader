@@ -457,6 +457,8 @@ def test_unexpected_error_has_unified_shape(client, monkeypatch):
     body = r.json()
     assert body["ok"] is False
     assert "SECRET" not in body["error"]  # 堆栈/细节不回传前端
+    assert "SECRET" not in body["detail"]  # 摘要也做密钥脱敏
+    assert "RuntimeError" in body["detail"]
 
 
 def test_lab_chart_returns_data_url(client, monkeypatch):

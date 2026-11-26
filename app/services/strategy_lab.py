@@ -116,7 +116,12 @@ def signal_quality_metrics(
 
 def generate_param_grid(strategy: str, max_combos: int = 12) -> list[dict]:
     """生成参数组合，过滤掉明显非法的组合（含自定义策略的网格）"""
-    from app.services.strategy import get_custom_param_grids
+    # 兼容尚未重启的旧 Web 进程：旧版 strategy 模块没有这个函数时退回内置网格
+    try:
+        from app.services.strategy import get_custom_param_grids
+    except ImportError:
+        def get_custom_param_grids() -> dict:
+            return {}
 
     grid = PARAM_GRIDS.get(strategy) or get_custom_param_grids().get(strategy)
     if not grid:
