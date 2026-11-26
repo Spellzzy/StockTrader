@@ -7,9 +7,11 @@
     signal = 0  → 持有/空仓
 """
 
+import ast
 import importlib.util
 import inspect
 import logging
+import re
 import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -402,6 +404,120 @@ def reset_custom_strategies() -> None:
     _CUSTOM_STRATEGIES.clear()
     _CUSTOM_PARAM_GRIDS.clear()
     _CUSTOM_LOADED = False
+
+
+_CUSTOM_FILENAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*\.py$")
+
+
+def _strategy_file_path(filename: str) -> Path:
+    """校验自定义策略文件名，返回目录内的安全路径"""
+    if not isinstance(filename, str) or not _CUSTOM_FILENAME_RE.fullmatch(filename):
+        raise ValueError("文件名只能为字母开头、仅含字母数字下划线的 .py 文件")
+    directory = _custom_dir()
+    if directory is None:
+        raise ValueError("自定义策略已在配置中禁用")
+    directory.mkdir(parents=True, exist_ok=True)
+    path = (directory / filename).resolve()
+    if path.parent != directory.resolve():
+        raise ValueError("非法文件路径")
+    return path
+
+
+def _declared_strategies(source: str) -> list[dict]:
+    """静态解析源码中声明的策略（不执行用户代码）"""
+    tree = ast.parse(source)
+    declared = []
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        name = None
+        description = ""
+        has_signals = False
+        for stmt in node.body:
+            if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+                target = stmt.targets[0]
+                if isinstance(target, ast.Name) and isinstance(stmt.value, ast.Constant):
+                    if target.id == "name" and isinstance(stmt.value.value, str):
+                        name = stmt.value.value.strip()
+                    if target.id == "description" and isinstance(stmt.value.value, str):
+                        description = stmt.value.value.strip()
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)) and stmt.name == "generate_signals":
+                has_signals = True
+        if name and has_signals:
+            declared.append({"name": name, "description": description, "class": node.name})
+    return declared
+
+
+def list_custom_strategy_files() -> list[dict]:
+    """列出 strategies/ 目录下的可编辑策略文件（含源码）"""
+    directory = _custom_dir()
+    if directory is None or not directory.is_dir():
+        return []
+    items = []
+    for path in sorted(directory.glob("*.py")):
+        if path.name.startswith("_") or not _CUSTOM_FILENAME_RE.fullmatch(path.name):
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+            declared = _declared_strategies(source)
+        except (OSError, SyntaxError, ValueError) as e:
+            items.append({"filename": path.name, "source": "", "strategies": [], "error": str(e)})
+            continue
+        items.append({
+            "filename": path.name,
+            "source": source,
+            "strategies": declared,
+            "error": "" if declared else "未找到含 name 与 generate_signals 的策略类",
+        })
+    return items
+
+
+def save_custom_strategy(filename: str, source: str) -> dict:
+    """校验并写入策略源码，随后热重载注册表。"""
+    path = _strategy_file_path(filename)
+    if not isinstance(source, str) or len(source) > 200_000:
+        raise ValueError("策略源码不能为空且不能超过 200KB")
+    try:
+        compile(source, filename, "exec")
+        declared = _declared_strategies(source)
+    except SyntaxError as e:
+        raise ValueError(f"语法错误（第 {e.lineno} 行）: {e.msg}") from e
+    if not declared:
+        raise ValueError("未找到含 name 与 generate_signals 的策略类")
+
+    names = [item["name"] for item in declared]
+    if len(set(names)) != len(names):
+        raise ValueError("文件内策略名重复")
+    for name in names:
+        if name in BUILTIN_STRATEGIES:
+            raise ValueError(f"策略名 {name} 与内置策略冲突")
+    for item in list_custom_strategy_files():
+        if item["filename"] == filename:
+            continue
+        for other in item["strategies"]:
+            if other["name"] in names:
+                raise ValueError(f"策略名 {other['name']} 已存在于 {item['filename']}")
+
+    path.write_text(source, encoding="utf-8", newline="\n")
+    reset_custom_strategies()
+    _load_custom_strategies()
+    missing = [name for name in names if name not in _CUSTOM_STRATEGIES]
+    if missing:
+        path.unlink(missing_ok=True)
+        reset_custom_strategies()
+        raise ValueError(f"策略注册失败: {', '.join(missing)}")
+    return {"filename": filename, "strategies": declared, "items": list_strategies()}
+
+
+def delete_custom_strategy(filename: str) -> dict:
+    """删除自定义策略文件并热重载注册表"""
+    path = _strategy_file_path(filename)
+    if not path.exists():
+        raise ValueError("策略文件不存在")
+    path.unlink()
+    reset_custom_strategies()
+    _load_custom_strategies()
+    return {"filename": filename, "items": list_strategies()}
 
 
 def get_strategy(name: str, **kwargs) -> BaseStrategy:

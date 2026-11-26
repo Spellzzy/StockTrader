@@ -190,6 +190,39 @@ if (typeof ST.invalidate !== "function") {
 }
 console.log("  缓存白名单 / 失效接口行为断言 OK");
 
+/* 策略编辑器：模板 / 列表渲染 / 保存按钮必须绑定，且下拉可热刷新 */
+const editor = {
+  files: document.getElementById("lab-editor-files"),
+  filename: document.getElementById("lab-editor-filename"),
+  code: document.getElementById("lab-editor-code"),
+  newBtn: document.getElementById("lab-editor-new"),
+  saveBtn: document.getElementById("lab-editor-save"),
+  deleteBtn: document.getElementById("lab-editor-delete"),
+};
+if (!editor.newBtn._handlers.click?.length || !editor.saveBtn._handlers.click?.length ||
+    !editor.deleteBtn._handlers.click?.length) {
+  throw new Error("策略编辑器按钮未绑定事件");
+}
+editor.newBtn.dispatchEvent({ type: "click" });
+if (!editor.code.value.includes("class MyCustom(BaseStrategy)")) {
+  throw new Error("新建模板未载入代码编辑框");
+}
+const origFetchForEditor = globalThis.fetch;
+globalThis.fetch = async (url) => ({
+  ok: true,
+  json: async () => ({ ok: true, data: {
+    items: [{ filename: "demo.py", source: "class Demo: pass", strategies: [], error: "" }],
+  } }),
+});
+editor.files.value = "demo.py";
+editor.files.dispatchEvent({ type: "change", target: editor.files });
+await new Promise((r) => setTimeout(r, 30));
+if (editor.filename.value !== "demo.py" || editor.code.value !== "class Demo: pass") {
+  throw new Error("选择已有策略文件未载入源码");
+}
+globalThis.fetch = origFetchForEditor;
+console.log("  策略编辑器模板与文件载入断言 OK");
+
 /* 确认门禁：未勾选时禁用提交，勾选后放行 */
 const gateBox = document.getElementById("w-confirm");
 const gateBtn = document.getElementById("w-submit");

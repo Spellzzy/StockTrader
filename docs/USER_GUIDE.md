@@ -1954,6 +1954,11 @@ class MyCustom(BaseStrategy):
 - 扫描每个进程只做一次；新增/修改策略文件后需要重启 CLI / Web 服务。
 - 可用 `strategies.enabled: false` 关闭自动加载，或用 `strategies.dir` 换目录（见 `config.yaml.example`）。
 
+**网页里直接写**：Web「策略实验室」→ 展开「自定义策略编辑器」→ 点「新建模板」→ 改代码 →
+「保存并启用」。保存会校验语法与策略名，写入 `strategies/` 并立即热重载，`lab-strategy`
+下拉会自动刷新并选中新策略，可直接点「参数寻优」「生成信号图」。「删除此文件」同样即时生效。
+CLI 侧新增策略仍需重启（CLI 每次启动只扫描一次）。
+
 自定义策略也能直接出信号图：
 
 ```bash

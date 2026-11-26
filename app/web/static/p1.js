@@ -118,8 +118,93 @@ async function compareBacktest() {
   });
 }
 
+/* ---------------- 策略编辑器 ---------------- */
+const STRATEGY_TEMPLATE = `from app.services.strategy import BaseStrategy
+
+PARAM_GRIDS = {"my_custom": {"threshold": [5, 10]}}  # 可选：optimize 用
+
+class MyCustom(BaseStrategy):
+    name = "my_custom"          # 不能和内置策略重名
+    description = "收盘价超过阈值买入"
+
+    def __init__(self, threshold=5):
+        self.threshold = threshold
+
+    def generate_signals(self, df):
+        df = df.copy()
+        df["signal"] = 0                       # 1=买 / -1=卖 / 0=持有
+        df.loc[df["close"] > self.threshold, "signal"] = 1
+        return df
+`;
+
+let editorFiles = [];
+function renderStrategyFiles(selected) {
+  const options = ['<option value="">＋ 新建策略…</option>']
+    .concat(editorFiles.map(f => `<option value="${esc(f.filename)}">${esc(f.filename)}${f.error ? ' ✗' : ''}</option>`))
+    .join('');
+  $('#lab-editor-files').innerHTML = options;
+  $('#lab-editor-files').value = selected || '';
+  const current = editorFiles.find(f => f.filename === selected);
+  $('#lab-editor-filename').value = selected || 'my_custom.py';
+  $('#lab-editor-code').value = current ? (current.source || '') : STRATEGY_TEMPLATE;
+  $('#lab-editor-hint').textContent = current && current.error ? current.error : '';
+}
+
+async function loadStrategyFiles(selected) {
+  try {
+    const d = await api('/api/strategies/files');
+    editorFiles = d.items || [];
+    renderStrategyFiles(selected);
+  } catch (e) {
+    const msg = String(e.message || e);
+    $('#lab-editor-hint').textContent = /404|Not Found/i.test(msg)
+      ? '接口不存在：请重启 Web 服务后再用编辑器' : msg;
+  }
+}
+
+function newStrategy() {
+  $('#lab-editor-files').value = '';
+  $('#lab-editor-filename').value = 'my_custom.py';
+  $('#lab-editor-code').value = STRATEGY_TEMPLATE;
+  $('#lab-editor-hint').textContent = '模板已载入；改名或改类名后保存';
+}
+
+async function reloadStrategiesAfterEdit() {
+  strategyCache = null;
+  ['bt-strategy', 'lab-strategy'].forEach(id => { $(id).dataset.filled = ''; });
+  await fillStrategies();
+}
+
+async function saveStrategy() {
+  const btn = $('#lab-editor-save');
+  await busy(btn, '保存中…', async () => {
+    clearError();
+    const d = await post('/api/strategies/save', {
+      filename: $('#lab-editor-filename').value.trim(),
+      source: $('#lab-editor-code').value,
+    });
+    $('#lab-editor-hint').textContent = '已保存并启用 ' + (d.strategies || []).map(s => s.name).join('、');
+    await Promise.all([loadStrategyFiles(d.filename), reloadStrategiesAfterEdit()]);
+    $('#lab-strategy').value = (d.strategies || [])[0]?.name || $('#lab-strategy').value;
+  });
+}
+
+async function deleteStrategy() {
+  const filename = $('#lab-editor-files').value;
+  if (!filename) { $('#lab-editor-hint').textContent = '请先选择已有策略文件'; return; }
+  const btn = $('#lab-editor-delete');
+  await busy(btn, '删除中…', async () => {
+    clearError();
+    await post('/api/strategies/delete', { filename });
+    $('#lab-editor-hint').textContent = '已删除 ' + filename;
+    await Promise.all([loadStrategyFiles(), reloadStrategiesAfterEdit()]);
+  });
+}
+
 /* ---------------- 策略实验室 ---------------- */
-async function loadLab() { await fillStrategies(); }
+async function loadLab() {
+  await Promise.all([fillStrategies(), loadStrategyFiles($('#lab-editor-files').value)]);
+}
 
 async function loadSignals() {
   const btn = $('#lab-signals-btn');
@@ -499,6 +584,10 @@ $('#bt-compare-btn').addEventListener('click', compareBacktest);
 $('#lab-signals-btn').addEventListener('click', loadSignals);
 $('#lab-optimize-btn').addEventListener('click', runOptimize);
 $('#lab-chart-btn').addEventListener('click', runStrategyChart);
+$('#lab-editor-files').addEventListener('change', e => loadStrategyFiles(e.target.value));
+$('#lab-editor-new').addEventListener('click', newStrategy);
+$('#lab-editor-save').addEventListener('click', saveStrategy);
+$('#lab-editor-delete').addEventListener('click', deleteStrategy);
 $('#predict-btn').addEventListener('click', runPredict);
 $('#predict-code').addEventListener('keydown', e => { if (e.key === 'Enter') runPredict(); });
 $('#predict-code').addEventListener('change', () => {

@@ -787,6 +787,41 @@ async def strategies() -> dict:
     return ok({"items": await run_in_threadpool(list_strategies)})
 
 
+class StrategyFileRequest(BaseModel):
+    filename: str
+    source: str = ""
+
+
+@app.get("/api/strategies/files")
+async def strategy_files() -> dict:
+    """列出可在线编辑的自定义策略文件"""
+    from app.services.strategy import list_custom_strategy_files
+
+    return ok({"items": await run_in_threadpool(list_custom_strategy_files)})
+
+
+@app.post("/api/strategies/save")
+async def strategy_save(req: StrategyFileRequest) -> dict:
+    """保存策略源码并立即热重载注册表"""
+    from app.services.strategy import save_custom_strategy
+
+    try:
+        return ok(await run_in_threadpool(save_custom_strategy, req.filename, req.source))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/strategies/delete")
+async def strategy_delete(req: StrategyFileRequest) -> dict:
+    """删除自定义策略文件并热重载注册表"""
+    from app.services.strategy import delete_custom_strategy
+
+    try:
+        return ok(await run_in_threadpool(delete_custom_strategy, req.filename))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ==================== P1：回测 ====================
 
 class BacktestRequest(BaseModel):

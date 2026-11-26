@@ -75,7 +75,7 @@
 | 持仓手工校正 | ✅ | `manual_override` 锁定行跳过重建；编辑 / 解锁 / 强制重建 |
 | 全市场摘选（P1） | ✅ | 批量 quote 预筛 + 复用 screener 条件 + `screen_runs` 落库去重 + 定时脚本 + 日报附加段；`stock-ai scan-market/scan-history` |
 | 全市场摘选（P2） | ✅ | Web「市场摘选」页 + 后台线程任务 + 两阶段进度/取消 + 历史回看；12 个 P2 单测 |
-| 自定义策略自动发现 | ✅ | `strategies/` 放 `.py` 自动注册，支持可选 `PARAM_GRIDS`；坏文件/重名自动跳过；`tests/test_strategies.py` |
+| 自定义策略自动发现 | ✅ | `strategies/` 放 `.py` 自动注册；Web「策略实验室」内可视化编辑/保存/删除，即时热重载；`tests/test_strategies.py`、`tests/test_web_api.py` |
 | 策略信号可视化 | ✅ | `stock-ai chart-strategy <code> -s <策略> --param k=v`；Web「策略实验室」内嵌同一张图（`/api/lab/chart`） |
 | 执行层 / 订单编排（阶段 0+1） | ⏸ **已实现，冻结不开放** | 代码与测试保留，CLI 入口由 `features.order_enabled=false` 关闭 |
 | QMT / Ptrade 真实通道（阶段 3） | ⬜ 未做 | 需券商量化权限与测试环境，未经验证不接 |

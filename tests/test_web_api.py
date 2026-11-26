@@ -511,4 +511,65 @@ def test_lab_chart_rejects_unknown_strategy(client, monkeypatch):
     monkeypatch.setattr("app.services.strategy.get_strategy", boom)
     r = client.post("/api/lab/chart", json={"code": "sh600519", "strategy": "nope"})
     assert r.status_code == 400
+
+
+STRATEGY_SOURCE = '''from app.services.strategy import BaseStrategy
+
+PARAM_GRIDS = {"web_custom": {"threshold": [5, 10]}}
+
+class WebCustom(BaseStrategy):
+    name = "web_custom"
+    description = "网页里新建的策略"
+
+    def __init__(self, threshold=5):
+        self.threshold = threshold
+
+    def generate_signals(self, df):
+        df = df.copy()
+        df["signal"] = 0
+        df.loc[df["close"] > self.threshold, "signal"] = 1
+        return df
+'''
+
+
+def test_strategy_editor_save_list_reload_and_delete(client, isolate_config, tmp_path):
+    isolate_config["strategies"]["dir"] = str(tmp_path)
+
+    r = client.post("/api/strategies/save", json={
+        "filename": "web_custom.py", "source": STRATEGY_SOURCE,
+    })
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["filename"] == "web_custom.py"
+    assert any(s["name"] == "web_custom" for s in data["items"])
+    assert (tmp_path / "web_custom.py").read_text(encoding="utf-8") == STRATEGY_SOURCE
+
+    from app.services.strategy import list_strategy_names
+    assert "web_custom" in list_strategy_names()  # 立即热重载生效
+
+    files = client.get("/api/strategies/files").json()["data"]["items"]
+    assert [f["filename"] for f in files] == ["web_custom.py"]
+    assert files[0]["strategies"][0]["name"] == "web_custom"
+    assert files[0]["error"] == ""
+
+    r = client.post("/api/strategies/delete", json={"filename": "web_custom.py"})
+    assert r.status_code == 200
+    assert not (tmp_path / "web_custom.py").exists()
+    assert "web_custom" not in list_strategy_names()
+
+
+def test_strategy_editor_rejects_bad_input(client, isolate_config, tmp_path):
+    isolate_config["strategies"]["dir"] = str(tmp_path)
+
+    bad_cases = [
+        ("../escape.py", STRATEGY_SOURCE, "文件名"),
+        ("my strategy.py", STRATEGY_SOURCE, "文件名"),
+        ("builtin.py", STRATEGY_SOURCE.replace("web_custom", "macd_cross"), "冲突"),
+        ("broken.py", "def (:", "语法错误"),
+        ("empty.py", "x = 1", "未找到"),
+    ]
+    for filename, source, keyword in bad_cases:
+        r = client.post("/api/strategies/save", json={"filename": filename, "source": source})
+        assert r.status_code == 400, (filename, r.text)
+        assert keyword in r.json()["error"]
     assert r.json()["ok"] is False

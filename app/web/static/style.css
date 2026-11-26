@@ -115,6 +115,12 @@ input[type=text]:focus { border-color: var(--accent); }
 .form-grid input, .form-grid select { background: var(--surface); border: 1px solid var(--line);
   border-radius: 8px; color: var(--fg); padding: 9px 12px; font-size: 14px; outline: none; }
 .form-grid input:focus, .form-grid select:focus { border-color: var(--accent); }
+#lab-editor summary { cursor: pointer; font-size: 13px; color: var(--fg); }
+#lab-editor textarea { width: 100%; box-sizing: border-box; margin: 4px 0 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--fg); padding: 12px; font-size: 13px; line-height: 1.6;
+  font-family: Consolas, Monaco, monospace; outline: none; resize: vertical; }
+#lab-editor textarea:focus { border-color: var(--accent); }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .result-box { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
 .result-box h3 { margin: 0 0 12px; font-size: 14px; font-weight: 600; }

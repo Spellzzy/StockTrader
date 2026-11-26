@@ -280,6 +280,20 @@
         <button id="lab-chart-btn" class="btn ghost">生成信号图</button>
         <span id="lab-hint" class="dim"></span>
       </div>
+      <details id="lab-editor" class="result-box">
+        <summary>自定义策略编辑器 — 写 Python 代码，保存后立即出现在上方策略下拉</summary>
+        <div class="form-grid">
+          <label>策略文件<select id="lab-editor-files"></select></label>
+          <label>文件名（字母开头的 .py）<input id="lab-editor-filename" type="text" placeholder="my_custom.py"></label>
+        </div>
+        <textarea id="lab-editor-code" spellcheck="false" rows="14" placeholder="from app.services.strategy import BaseStrategy"></textarea>
+        <div class="toolbar">
+          <button id="lab-editor-new" class="btn ghost">新建模板</button>
+          <button id="lab-editor-save" class="btn primary">保存并启用</button>
+          <button id="lab-editor-delete" class="btn ghost">删除此文件</button>
+          <span id="lab-editor-hint" class="dim"></span>
+        </div>
+      </details>
       <div class="table-wrap"><table id="lab-signals">
         <thead><tr><th>策略</th><th class="num">信号数</th><th class="num">命中率</th><th class="num">样本内</th><th class="num">样本外</th><th class="num">衰减</th><th class="num">胜率</th></tr></thead>
         <tbody></tbody></table></div>
