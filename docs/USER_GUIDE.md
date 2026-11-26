@@ -1954,6 +1954,15 @@ class MyCustom(BaseStrategy):
 - 扫描每个进程只做一次；新增/修改策略文件后需要重启 CLI / Web 服务。
 - 可用 `strategies.enabled: false` 关闭自动加载，或用 `strategies.dir` 换目录（见 `config.yaml.example`）。
 
+自定义策略也能直接出信号图：
+
+```bash
+stock-ai chart-strategy sh600519 -s my_custom --param threshold=8 -d 180   # 缩写 c-s
+```
+
+上图是收盘价 + 买入 `▲` / 卖出 `▼`，下图是信号配对收益与买入持有对比（不含费用、滑点、T+1），
+输出保存到 `visualization.save_dir`。参数可重复传 `--param key=value`，数字会自动转成 int/float。
+
 ### Q: 怎么把策略信号变成可执行的订单？
 
 > **⏸ 该功能当前冻结，不对外开放。** 执行层代码与测试保留在仓库里，

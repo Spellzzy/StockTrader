@@ -428,6 +428,26 @@ def register_shortcuts(app: typer.Typer, cli_module):
         """chart-kline 的缩写"""
         cli_module.chart_kline(code=code, period=period, count=count)
 
+    @app.command("chart-strategy", help="绘制策略买卖信号图 (缩写: c-s)")
+    def quick_chart_strategy(
+        code: str = typer.Argument(..., help="股票代码"),
+        strategy: str = typer.Option("macd_cross", "--strategy", "-s", help="策略名"),
+        days: int = typer.Option(180, "--days", "-d", help="回看交易日数"),
+        params: list[str] = typer.Option([], "--param", help="策略参数 key=value，可重复"),
+    ):
+        """绘制策略买卖信号图"""
+        cli_module.chart_strategy(code=code, strategy=strategy, days=days, params=params)
+
+    @app.command("c-s", hidden=True)
+    def alias_c_s(
+        code: str = typer.Argument(..., help="股票代码"),
+        strategy: str = typer.Option("macd_cross", "--strategy", "-s", help="策略名"),
+        days: int = typer.Option(180, "--days", "-d", help="回看交易日数"),
+        params: list[str] = typer.Option([], "--param", help="策略参数 key=value，可重复"),
+    ):
+        """chart-strategy 的缩写"""
+        cli_module.chart_strategy(code=code, strategy=strategy, days=days, params=params)
+
     @app.command("chart-portfolio", help="绘制持仓分布图 (缩写: c-pf)")
     def quick_chart_portfolio():
         """绘制持仓分布图"""

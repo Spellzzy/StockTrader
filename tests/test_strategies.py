@@ -139,3 +139,65 @@ def test_custom_strategy_disabled_or_broken_is_skipped(tmp_path, isolate_config)
 
     reset_custom_strategies()
     assert "my_custom" not in list_strategy_names()
+
+
+def test_strategy_signal_chart_saves_png(tmp_path, isolate_config, monkeypatch):
+    from pathlib import Path
+
+    import matplotlib.pyplot as plt
+
+    from app.visualization.charts import ChartService
+
+    monkeypatch.setattr(plt, "show", lambda: None)
+    isolate_config["visualization"]["save_dir"] = str(tmp_path)
+    df = pd.DataFrame({
+        "date": pd.bdate_range("2026-01-01", periods=4),
+        "close": [10.0, 10.5, 10.2, 10.8],
+        "signal": [0, 1, 0, -1],
+    })
+
+    path = ChartService().plot_strategy_signals(df, strategy="demo", title="demo 信号图")
+    assert Path(path).exists()
+
+
+def test_chart_strategy_cli_command(monkeypatch):
+    from typer.testing import CliRunner
+
+    import app.cli as cli
+    import app.logging_setup as logging_setup
+
+    class FakeStrategy:
+        def generate_signals(self, df):
+            out = df.copy()
+            out["signal"] = [0, 1, 0, -1]
+            return out
+
+    kline = pd.DataFrame({
+        "date": pd.bdate_range("2026-01-01", periods=4),
+        "open": [10.0, 10.1, 10.2, 10.3],
+        "close": [10.0, 10.5, 10.2, 10.8],
+        "high": [10.2, 10.7, 10.4, 11.0],
+        "low": [9.8, 10.0, 10.0, 10.2],
+        "volume": [1000, 1100, 900, 1200],
+    })
+    monkeypatch.setattr(cli, "init_db", lambda: None)
+    monkeypatch.setattr(logging_setup, "setup_logging", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_kline_df",
+        lambda self, *a, **kw: kline,
+    )
+    monkeypatch.setattr(
+        "app.ai.feature_engine.FeatureEngine.build_features",
+        lambda self, df: df,
+    )
+    monkeypatch.setattr("app.services.strategy.get_strategy", lambda *a, **kw: FakeStrategy())
+    monkeypatch.setattr(
+        "app.visualization.charts.ChartService.plot_strategy_signals",
+        lambda self, *a, **kw: "fake_chart.png",
+    )
+
+    result = CliRunner().invoke(
+        cli.app, ["chart-strategy", "sh600519", "-s", "demo", "-d", "60"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "fake_chart.png" in result.output

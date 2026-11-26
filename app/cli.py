@@ -862,6 +862,62 @@ def chart_kline(
         console.print(f"[green]✅ 图表已保存: {path}[/green]")
 
 
+@chart_app.command("strategy")
+def chart_strategy(
+    code: str = typer.Argument(..., help="股票代码"),
+    strategy: str = typer.Option("macd_cross", "--strategy", "-s", help="策略名（含自定义策略）"),
+    days: int = typer.Option(180, "--days", "-d", help="回看交易日数"),
+    params: list[str] = typer.Option([], "--param", help="策略参数 key=value，可重复；如 threshold=8"),
+):
+    """绘制策略买卖信号图（含简化信号收益曲线）"""
+    from app.ai.feature_engine import FeatureEngine
+    from app.services.market_service import MarketService
+    from app.services.strategy import get_strategy
+    from app.visualization.charts import ChartService
+
+    kwargs = {}
+    for item in params or []:
+        if "=" not in item:
+            console.print(f"[yellow]⚠️ 忽略无效参数: {item}（应为 key=value）[/yellow]")
+            continue
+        key, raw = item.split("=", 1)
+        raw = raw.strip()
+        lowered = raw.lower()
+        if lowered in ("true", "false"):
+            kwargs[key.strip()] = lowered == "true"
+            continue
+        try:
+            kwargs[key.strip()] = int(raw)
+        except ValueError:
+            try:
+                kwargs[key.strip()] = float(raw)
+            except ValueError:
+                kwargs[key.strip()] = raw
+
+    df = MarketService().get_kline_df(code, "day", days)
+    if df.empty:
+        console.print("[red]❌ 获取K线数据失败[/red]")
+        return
+
+    try:
+        signaled = get_strategy(strategy, **kwargs).generate_signals(
+            FeatureEngine().build_features(df)
+        )
+    except (ValueError, TypeError) as e:
+        console.print(f"[red]❌ 策略 {strategy} 不可用: {e}[/red]")
+        return
+
+    buys = int((signaled["signal"] == 1).sum())
+    sells = int((signaled["signal"] == -1).sum())
+    path = ChartService().plot_strategy_signals(
+        signaled, strategy=strategy, title=f"{code} {strategy} 信号图"
+    )
+    console.print(
+        f"[green]✅ 信号图已保存: {path}[/green] "
+        f"[dim](买入 {buys} / 卖出 {sells}；收益曲线不含费用与滑点)[/dim]"
+    )
+
+
 @chart_app.command("portfolio")
 def chart_portfolio():
     """绘制持仓分布图"""
@@ -1088,7 +1144,8 @@ register_order_commands(order_app, registry)
 for _name in (
     "_notify_list_impl", "_notify_test_impl", "_parse_time",
     "analysis_summary", "analysis_monthly", "analysis_ranking", "analysis_drawdown",
-    "chart_pnl", "chart_kline", "chart_portfolio", "chart_winloss", "chart_monthly",
+    "chart_pnl", "chart_kline", "chart_strategy",
+    "chart_portfolio", "chart_winloss", "chart_monthly",
     "market_search", "market_quote", "market_kline", "market_finance",
     "market_profile", "market_fund", "market_news", "market_chip",
     "portfolio_show", "portfolio_rebuild",

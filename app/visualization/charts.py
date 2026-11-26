@@ -298,6 +298,89 @@ class ChartService:
         plt.close(fig)
         return filepath
 
+    def plot_strategy_signals(
+        self,
+        signaled_df: pd.DataFrame,
+        strategy: str = "strategy",
+        title: str = "",
+        save: bool = True,
+    ) -> str:
+        """绘制策略买卖信号与简化信号收益曲线。
+
+        signaled_df 需包含 date / close / signal 列（signal: 1 买 / -1 卖 / 0 持有）。
+        下方收益曲线只是信号配对的示意，不含手续费、滑点与 T+1 约束。
+        """
+        import matplotlib.dates as mdates
+        import matplotlib.pyplot as plt
+
+        plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "Arial Unicode MS"]
+        plt.rcParams["axes.unicode_minus"] = False
+
+        df = signaled_df.copy()
+        if not {"date", "close", "signal"}.issubset(df.columns):
+            raise ValueError("策略信号图需要 date / close / signal 三列")
+
+        dates = pd.to_datetime(df["date"])
+        close = df["close"].astype(float)
+        signal = df["signal"].fillna(0).astype(int)
+        buys = signal == 1
+        sells = signal == -1
+
+        fig, (ax_price, ax_equity) = plt.subplots(
+            2, 1, figsize=(14, 8), height_ratios=[3, 1], sharex=True
+        )
+        self._apply_theme(fig, ax_price)
+        self._apply_theme(fig, ax_equity)
+
+        ax_price.plot(dates, close, color="#2196F3", linewidth=1.6, label="收盘价")
+        if buys.any():
+            ax_price.scatter(
+                dates[buys], close[buys], marker="^", s=80, color=get_up_hex(),
+                label="买入", zorder=5,
+            )
+        if sells.any():
+            ax_price.scatter(
+                dates[sells], close[sells], marker="v", s=80, color=get_down_hex(),
+                label="卖出", zorder=5,
+            )
+        ax_price.set_title(title or f"{strategy} 策略信号", fontsize=15, fontweight="bold")
+        ax_price.set_ylabel("价格", fontsize=11)
+        ax_price.grid(True, alpha=0.15)
+        ax_price.legend(loc="upper left", fontsize=9, framealpha=0.7)
+
+        # 信号配对收益：买入标记入场，卖出标记离场，持仓期间按收盘价估值
+        equity = []
+        capital = 1.0
+        entry = None
+        for price, sig in zip(close, signal):
+            if sig == 1 and entry is None:
+                entry = float(price)
+            elif sig == -1 and entry is not None and entry > 0:
+                capital *= float(price) / entry
+                entry = None
+            equity.append(capital if entry is None else capital * float(price) / entry)
+        ax_equity.plot(dates, equity, color="#FFD700", linewidth=1.5, label="信号收益")
+        ax_equity.plot(
+            dates, close / close.iloc[0], color="#888888", linewidth=1.0,
+            linestyle="--", label="买入持有",
+        )
+        ax_equity.axhline(y=1.0, color="#666666", linestyle=":", linewidth=0.8)
+        ax_equity.set_ylabel("累计 (起始=1)", fontsize=10)
+        ax_equity.grid(True, alpha=0.15)
+        ax_equity.legend(loc="upper left", fontsize=8, framealpha=0.7)
+        ax_equity.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
+
+        plt.tight_layout()
+        filepath = ""
+        if save:
+            safe_name = (title or strategy).replace(" ", "_").replace("/", "_")
+            filepath = os.path.join(self.save_dir, f"strategy_{safe_name}.png")
+            fig.savefig(filepath, dpi=150, bbox_inches="tight")
+
+        plt.show()
+        plt.close(fig)
+        return filepath
+
     def plot_portfolio_pie(
         self,
         holdings: list[dict],
