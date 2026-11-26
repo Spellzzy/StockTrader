@@ -29,7 +29,11 @@ def isolate_config():
     """隔离配置，避免用例读写用户 config.yaml 或污染 DEFAULT_CONFIG"""
     snapshot = copy.deepcopy(config_mod.DEFAULT_CONFIG)
     config_mod._config = copy.deepcopy(config_mod.DEFAULT_CONFIG)
+    from app.services.strategy import reset_custom_strategies
+
+    reset_custom_strategies()
     yield config_mod._config
+    reset_custom_strategies()
     config_mod._config = None
     config_mod.DEFAULT_CONFIG.clear()
     config_mod.DEFAULT_CONFIG.update(snapshot)

@@ -1922,6 +1922,38 @@ stock-ai optimize sz002555 -s ma_cross  # 缩写 opt，参数网格 + 滚动窗�
 再做 rolling walk-forward：每折用训练段挑参数、测试段验证。
 信号样本不足的折会标「样本不足」，不会给出看似可信的衰减值。
 
+### Q: 怎么做自己的策略？
+
+不用改 `app/services/strategy.py`。在项目根目录的 `strategies/` 放一个 `.py` 文件即可，
+启动时自动扫描并注册，`stock-ai bt-list` 会一并列出：
+
+```python
+# strategies/my_custom.py
+from app.services.strategy import BaseStrategy
+
+PARAM_GRIDS = {"my_custom": {"threshold": [5, 10]}}  # 可选，给 optimize 用
+
+class MyCustom(BaseStrategy):
+    name = "my_custom"          # 策略名，不能和内置重名
+    description = "收盘价超过阈值买入"
+
+    def __init__(self, threshold=5):
+        self.threshold = threshold
+
+    def generate_signals(self, df):
+        df = df.copy()
+        df["signal"] = 0                       # 1=买 / -1=卖 / 0=持有
+        df.loc[df["close"] > self.threshold, "signal"] = 1
+        return df
+```
+
+注意：
+
+- 文件以 `_` 开头会被忽略；`PARAM_GRIDS` 用策略名作 key，可选。
+- 与内置策略重名、加载报错的文件会被跳过并写日志，不影响其它策略。
+- 扫描每个进程只做一次；新增/修改策略文件后需要重启 CLI / Web 服务。
+- 可用 `strategies.enabled: false` 关闭自动加载，或用 `strategies.dir` 换目录（见 `config.yaml.example`）。
+
 ### Q: 怎么把策略信号变成可执行的订单？
 
 > **⏸ 该功能当前冻结，不对外开放。** 执行层代码与测试保留在仓库里，

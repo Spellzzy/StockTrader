@@ -150,6 +150,11 @@ web:
 features:
   order_enabled: false        # 订单执行层暂不开放；true 才会在 CLI 挂载 stock-ai order
 
+# 自定义策略：目录里每个 .py 文件中的 BaseStrategy 子类会自动注册
+strategies:
+  enabled: true               # false 则只使用内置策略
+  dir: "./strategies"         # 相对路径按项目根目录解析
+
 # 券商通道 / 订单编排（默认只出草稿，绝不自动真实下单）
 # 注意：整个执行层当前处于「冻结」状态，见 features.order_enabled
 broker:

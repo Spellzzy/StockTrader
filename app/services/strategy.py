@@ -7,9 +7,17 @@
     signal = 0  → 持有/空仓
 """
 
+import importlib.util
+import inspect
+import logging
+import sys
 from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Optional
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class BaseStrategy(ABC):
@@ -286,11 +294,93 @@ BUILTIN_STRATEGIES = {
 }
 
 
+_CUSTOM_STRATEGIES: dict[str, type[BaseStrategy]] = {}
+_CUSTOM_PARAM_GRIDS: dict[str, dict] = {}
+_CUSTOM_LOADED = False
+
+
+def _custom_dir() -> Optional[Path]:
+    """自定义策略目录；关闭或不存在时返回 None"""
+    from app.config import PROJECT_ROOT, get_config
+
+    cfg = get_config().get("strategies") or {}
+    if not cfg.get("enabled", True):
+        return None
+    path = Path(str(cfg.get("dir") or "./strategies"))
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _load_custom_strategies() -> None:
+    """扫描目录下的 .py，自动注册 BaseStrategy 子类（只加载一次）"""
+    global _CUSTOM_LOADED
+    if _CUSTOM_LOADED:
+        return
+    _CUSTOM_LOADED = True
+
+    directory = _custom_dir()
+    if directory is None or not directory.is_dir():
+        return
+
+    for path in sorted(directory.glob("*.py")):
+        if path.name.startswith("_"):
+            continue
+        module_name = f"_stock_ai_strategy_{abs(hash(str(path)))}"
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+        except Exception as e:
+            logger.warning("加载自定义策略 %s 失败: %s", path.name, e)
+            sys.modules.pop(module_name, None)
+            continue
+
+        grids = getattr(module, "PARAM_GRIDS", None)
+        grids = grids if isinstance(grids, dict) else {}
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if not issubclass(obj, BaseStrategy) or obj is BaseStrategy:
+                continue
+            if inspect.isabstract(obj):
+                continue
+            name = getattr(obj, "name", "")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            name = name.strip()
+            if name in BUILTIN_STRATEGIES or name in _CUSTOM_STRATEGIES:
+                logger.warning(f"自定义策略 {name} 与已有策略重名，已跳过")
+                continue
+            _CUSTOM_STRATEGIES[name] = obj
+            params = grids.get(name)
+            if isinstance(params, dict):
+                _CUSTOM_PARAM_GRIDS[name] = params
+
+
+def _all_strategies() -> dict[str, type[BaseStrategy]]:
+    _load_custom_strategies()
+    return {**BUILTIN_STRATEGIES, **_CUSTOM_STRATEGIES}
+
+
+def get_custom_param_grids() -> dict[str, dict]:
+    """自定义策略的参数网格，供 strategy_lab 的 optimize 使用"""
+    _load_custom_strategies()
+    return dict(_CUSTOM_PARAM_GRIDS)
+
+
+def reset_custom_strategies() -> None:
+    """清空自定义策略缓存（测试用；运行时重新扫描需重启进程）"""
+    global _CUSTOM_LOADED
+    _CUSTOM_STRATEGIES.clear()
+    _CUSTOM_PARAM_GRIDS.clear()
+    _CUSTOM_LOADED = False
+
+
 def get_strategy(name: str, **kwargs) -> BaseStrategy:
-    """根据名称获取策略实例
+    """根据名称获取策略实例（内置 + 自定义）
 
     Args:
-        name: 策略名称 (macd_cross / ma_cross / rsi / boll / kdj / dual_macd / turtle)
+        name: 策略名称，可用 `stock-ai bt-list` 查看
         **kwargs: 策略参数
 
     Returns:
@@ -299,9 +389,10 @@ def get_strategy(name: str, **kwargs) -> BaseStrategy:
     Raises:
         ValueError: 未知策略名称
     """
-    cls = BUILTIN_STRATEGIES.get(name)
+    strategies = _all_strategies()
+    cls = strategies.get(name)
     if cls is None:
-        valid = ", ".join(BUILTIN_STRATEGIES.keys())
+        valid = ", ".join(strategies.keys())
         raise ValueError(f"未知策略: {name}\n可用策略: {valid}")
     return cls(**kwargs)
 
@@ -312,13 +403,13 @@ def list_strategy_names() -> list[str]:
     `list_strategies()` 返回的是含 name/description/class 的 dict 列表，
     直接拿它当字符串用会报 unhashable type: 'dict'。
     """
-    return list(BUILTIN_STRATEGIES.keys())
+    return list(_all_strategies().keys())
 
 
 def list_strategies() -> list:
-    """列出所有内置策略"""
+    """列出内置 + 自定义策略"""
     result = []
-    for name, cls in BUILTIN_STRATEGIES.items():
+    for name, cls in _all_strategies().items():
         instance = cls()
         result.append({
             "name": name,

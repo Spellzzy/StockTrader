@@ -62,6 +62,11 @@ DEFAULT_CONFIG = {
         # 订单执行层已实现但暂不开放；设为 true 才会在 CLI 挂载 stock-ai order
         "order_enabled": False,
     },
+    "strategies": {
+        # 自定义策略目录：放入继承 BaseStrategy 的 .py 文件即自动注册
+        "enabled": True,
+        "dir": "./strategies",
+    },
     "web": {
         "host": "127.0.0.1",   # 只绑本机，不暴露局域网
         "port": 8765,

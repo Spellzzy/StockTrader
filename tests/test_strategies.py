@@ -4,7 +4,14 @@ import pandas as pd
 import pytest
 
 from app.ai.feature_engine import FeatureEngine
-from app.services.strategy import BUILTIN_STRATEGIES, get_strategy, list_strategies
+from app.services.strategy import (
+    BUILTIN_STRATEGIES,
+    get_custom_param_grids,
+    get_strategy,
+    list_strategies,
+    list_strategy_names,
+)
+from app.services.strategy_lab import generate_param_grid
 
 ALL_STRATEGIES = sorted(BUILTIN_STRATEGIES)
 
@@ -74,3 +81,61 @@ def test_boll_default_keeps_legacy_cross_logic(kline_df):
     assert get_strategy("boll").generate_signals(featured)["signal"].tolist() == (
         legacy["signal"].tolist()
     )
+
+
+CUSTOM_SOURCE = '''
+from app.services.strategy import BaseStrategy
+
+PARAM_GRIDS = {"my_custom": {"threshold": [5, 10]}}
+
+class MyCustom(BaseStrategy):
+    name = "my_custom"
+    description = "收盘价超过阈值买入"
+
+    def __init__(self, threshold=5):
+        self.threshold = threshold
+        self.description = f"close > {threshold}"
+
+    def generate_signals(self, df):
+        df = df.copy()
+        df["signal"] = 0
+        df.loc[df["close"] > self.threshold, "signal"] = 1
+        return df
+'''
+
+
+def test_custom_strategy_is_autodiscovered(tmp_path, isolate_config):
+    (tmp_path / "my_custom.py").write_text(CUSTOM_SOURCE, encoding="utf-8")
+    isolate_config["strategies"] = {"enabled": True, "dir": str(tmp_path)}
+
+    assert "my_custom" in list_strategy_names()
+    strategy = get_strategy("my_custom", threshold=8)
+    out = strategy.generate_signals(pd.DataFrame({"close": [7, 9, 6, 10]}))
+    assert out["signal"].tolist() == [0, 1, 0, 1]
+    assert any(s["name"] == "my_custom" for s in list_strategies())
+
+
+def test_custom_param_grid_is_used_by_optimize(tmp_path, isolate_config):
+    (tmp_path / "my_custom.py").write_text(CUSTOM_SOURCE, encoding="utf-8")
+    isolate_config["strategies"] = {"enabled": True, "dir": str(tmp_path)}
+
+    assert get_custom_param_grids()["my_custom"] == {"threshold": [5, 10]}
+    assert generate_param_grid("my_custom") == [{"threshold": 5}, {"threshold": 10}]
+
+
+def test_custom_strategy_disabled_or_broken_is_skipped(tmp_path, isolate_config):
+    (tmp_path / "broken.py").write_text("raise RuntimeError('boom')\n", encoding="utf-8")
+    (tmp_path / "clash.py").write_text(
+        CUSTOM_SOURCE.replace('"my_custom"', '"rsi"'), encoding="utf-8"
+    )
+    isolate_config["strategies"] = {"enabled": True, "dir": str(tmp_path)}
+
+    # 坏文件和内置重名策略都被跳过，内置 rsi 不受影响
+    assert get_strategy("rsi").__class__.__name__ == "RSIOversoldStrategy"
+    assert "my_custom" not in list_strategy_names()
+
+    isolate_config["strategies"]["enabled"] = False
+    from app.services.strategy import reset_custom_strategies
+
+    reset_custom_strategies()
+    assert "my_custom" not in list_strategy_names()

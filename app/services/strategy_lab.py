@@ -115,8 +115,10 @@ def signal_quality_metrics(
 # ==================== 纯逻辑：参数网格与滚动窗口 ====================
 
 def generate_param_grid(strategy: str, max_combos: int = 12) -> list[dict]:
-    """生成参数组合，过滤掉明显非法的组合"""
-    grid = PARAM_GRIDS.get(strategy)
+    """生成参数组合，过滤掉明显非法的组合（含自定义策略的网格）"""
+    from app.services.strategy import get_custom_param_grids
+
+    grid = PARAM_GRIDS.get(strategy) or get_custom_param_grids().get(strategy)
     if not grid:
         return [{}]
 
