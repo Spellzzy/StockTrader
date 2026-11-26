@@ -173,6 +173,33 @@ async function runOptimize() {
   });
 }
 
+function parseLabParams(text) {
+  const out = {};
+  (text || '').split(',').map(s => s.trim()).filter(Boolean).forEach(pair => {
+    const i = pair.indexOf('=');
+    if (i > 0) out[pair.slice(0, i).trim()] = pair.slice(i + 1).trim();
+  });
+  return out;
+}
+
+async function runStrategyChart() {
+  const btn = $('#lab-chart-btn');
+  await busy(btn, '出图中…', async () => {
+    clearError();
+    const d = await post('/api/lab/chart', {
+      code: $('#lab-code').value.trim(),
+      strategy: $('#lab-strategy').value,
+      days: Number($('#lab-days').value) || 180,
+      params: parseLabParams($('#lab-chart-params').value),
+    });
+    $('#lab-chart-result').innerHTML = `
+      <div class="result-box"><h3>${esc(d.code)} · ${esc(d.strategy)} 信号图</h3>
+        <img src="${d.image}" alt="${esc(d.strategy)} 买卖信号图" style="max-width:100%;border-radius:8px">
+        <div class="dim">买入 ${finite(d.buys, 0)} / 卖出 ${finite(d.sells, 0)}；
+          收益曲线不含费用、滑点与 T+1</div></div>`;
+  });
+}
+
 /* ---------------- AI 预测 ---------------- */
 let pickerLoaded = false;
 async function loadCodePicker() {
@@ -471,6 +498,7 @@ $('#bt-run').addEventListener('click', runBacktest);
 $('#bt-compare-btn').addEventListener('click', compareBacktest);
 $('#lab-signals-btn').addEventListener('click', loadSignals);
 $('#lab-optimize-btn').addEventListener('click', runOptimize);
+$('#lab-chart-btn').addEventListener('click', runStrategyChart);
 $('#predict-btn').addEventListener('click', runPredict);
 $('#predict-code').addEventListener('keydown', e => { if (e.key === 'Enter') runPredict(); });
 $('#predict-code').addEventListener('change', () => {

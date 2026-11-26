@@ -271,16 +271,20 @@
         <label>策略<select id="lab-strategy"></select></label>
         <label>参数组合数<input id="lab-combos" type="number" value="8" min="1" max="20"></label>
         <label>滚动折数<input id="lab-folds" type="number" value="3" min="1" max="6"></label>
+        <label>图表参数<input id="lab-chart-params" type="text" placeholder="threshold=8, period=6"></label>
+        <label>图表天数<input id="lab-days" type="number" value="180" min="30" max="1000"></label>
       </div>
       <div class="toolbar">
         <button id="lab-signals-btn" class="btn primary">评估全部策略</button>
         <button id="lab-optimize-btn" class="btn ghost">参数寻优 + 滚动验证</button>
+        <button id="lab-chart-btn" class="btn ghost">生成信号图</button>
         <span id="lab-hint" class="dim"></span>
       </div>
       <div class="table-wrap"><table id="lab-signals">
         <thead><tr><th>策略</th><th class="num">信号数</th><th class="num">命中率</th><th class="num">样本内</th><th class="num">样本外</th><th class="num">衰减</th><th class="num">胜率</th></tr></thead>
         <tbody></tbody></table></div>
       <div id="lab-optimize-result"></div>
+      <div id="lab-chart-result"></div>
     </section>
 
     <!-- AI 预测 -->

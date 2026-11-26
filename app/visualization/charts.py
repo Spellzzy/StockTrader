@@ -1,6 +1,7 @@
 """可视化图表模块 - matplotlib + plotly"""
 
 import os
+from io import BytesIO
 
 import pandas as pd
 import numpy as np
@@ -304,7 +305,9 @@ class ChartService:
         strategy: str = "strategy",
         title: str = "",
         save: bool = True,
-    ) -> str:
+        show: bool = True,
+        return_bytes: bool = False,
+    ):
         """绘制策略买卖信号与简化信号收益曲线。
 
         signaled_df 需包含 date / close / signal 列（signal: 1 买 / -1 卖 / 0 持有）。
@@ -371,13 +374,20 @@ class ChartService:
         ax_equity.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
 
         plt.tight_layout()
+        if return_bytes:
+            buffer = BytesIO()
+            fig.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+            plt.close(fig)
+            return buffer.getvalue()
+
         filepath = ""
         if save:
             safe_name = (title or strategy).replace(" ", "_").replace("/", "_")
             filepath = os.path.join(self.save_dir, f"strategy_{safe_name}.png")
             fig.savefig(filepath, dpi=150, bbox_inches="tight")
 
-        plt.show()
+        if show:
+            plt.show()
         plt.close(fig)
         return filepath
 

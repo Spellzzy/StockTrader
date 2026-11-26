@@ -872,27 +872,17 @@ def chart_strategy(
     """绘制策略买卖信号图（含简化信号收益曲线）"""
     from app.ai.feature_engine import FeatureEngine
     from app.services.market_service import MarketService
-    from app.services.strategy import get_strategy
+    from app.services.strategy import coerce_strategy_params, get_strategy
     from app.visualization.charts import ChartService
 
-    kwargs = {}
+    raw_params = {}
     for item in params or []:
         if "=" not in item:
             console.print(f"[yellow]⚠️ 忽略无效参数: {item}（应为 key=value）[/yellow]")
             continue
-        key, raw = item.split("=", 1)
-        raw = raw.strip()
-        lowered = raw.lower()
-        if lowered in ("true", "false"):
-            kwargs[key.strip()] = lowered == "true"
-            continue
-        try:
-            kwargs[key.strip()] = int(raw)
-        except ValueError:
-            try:
-                kwargs[key.strip()] = float(raw)
-            except ValueError:
-                kwargs[key.strip()] = raw
+        key, value = item.split("=", 1)
+        raw_params[key.strip()] = value.strip()
+    kwargs = coerce_strategy_params(raw_params)
 
     df = MarketService().get_kline_df(code, "day", days)
     if df.empty:

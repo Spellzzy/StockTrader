@@ -362,6 +362,34 @@ def _all_strategies() -> dict[str, type[BaseStrategy]]:
     return {**BUILTIN_STRATEGIES, **_CUSTOM_STRATEGIES}
 
 
+def coerce_strategy_params(params: dict) -> dict:
+    """把 CLI / Web 传来的字符串参数转成数字或布尔，供策略构造函数使用。"""
+    result = {}
+    for key, raw in (params or {}).items():
+        name = str(key).strip()
+        if not name:
+            continue
+        if isinstance(raw, bool):
+            result[name] = raw
+            continue
+        if isinstance(raw, (int, float)):
+            result[name] = raw
+            continue
+        text = str(raw).strip()
+        lowered = text.lower()
+        if lowered in ("true", "false"):
+            result[name] = lowered == "true"
+            continue
+        try:
+            result[name] = int(text)
+        except ValueError:
+            try:
+                result[name] = float(text)
+            except ValueError:
+                result[name] = text
+    return result
+
+
 def get_custom_param_grids() -> dict[str, dict]:
     """自定义策略的参数网格，供 strategy_lab 的 optimize 使用"""
     _load_custom_strategies()

@@ -457,3 +457,56 @@ def test_unexpected_error_has_unified_shape(client, monkeypatch):
     body = r.json()
     assert body["ok"] is False
     assert "SECRET" not in body["error"]  # 堆栈/细节不回传前端
+
+
+def test_lab_chart_returns_data_url(client, monkeypatch):
+    class FakeStrategy:
+        def generate_signals(self, df):
+            out = df.copy()
+            out["signal"] = [0, 1, 0, -1, 0]
+            return out
+
+    kline = pd.DataFrame({
+        "date": pd.bdate_range("2026-01-01", periods=5),
+        "open": [10.0] * 5,
+        "close": [10.0, 10.5, 10.2, 10.8, 10.6],
+        "high": [10.5] * 5,
+        "low": [9.5] * 5,
+        "volume": [1000] * 5,
+    })
+    monkeypatch.setattr(
+        "app.services.market_service.MarketService.get_kline_df",
+        lambda self, *a, **kw: kline,
+    )
+    monkeypatch.setattr(
+        "app.ai.feature_engine.FeatureEngine.build_features",
+        lambda self, df: df,
+    )
+    monkeypatch.setattr(
+        "app.services.strategy.get_strategy",
+        lambda name, **kw: FakeStrategy(),
+    )
+    monkeypatch.setattr(
+        "app.visualization.charts.ChartService.plot_strategy_signals",
+        lambda self, *a, **kw: b"PNG-BYTES",
+    )
+
+    r = client.post("/api/lab/chart", json={
+        "code": "sh600519", "strategy": "demo", "days": 60,
+        "params": {"threshold": "8"},
+    })
+    assert r.status_code == 200
+    d = r.json()["data"]
+    assert d["image"].startswith("data:image/png;base64,")
+    assert d["buys"] == 1 and d["sells"] == 1
+    assert d["strategy"] == "demo"
+
+
+def test_lab_chart_rejects_unknown_strategy(client, monkeypatch):
+    def boom(name, **kw):
+        raise ValueError("未知策略: nope")
+
+    monkeypatch.setattr("app.services.strategy.get_strategy", boom)
+    r = client.post("/api/lab/chart", json={"code": "sh600519", "strategy": "nope"})
+    assert r.status_code == 400
+    assert r.json()["ok"] is False

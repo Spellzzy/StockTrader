@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -900,6 +901,52 @@ async def lab_optimize(req: OptimizeRequest) -> dict:
         }
 
     return ok(await run_in_threadpool(collect))
+
+
+class StrategyChartRequest(BaseModel):
+    code: str
+    strategy: str = "macd_cross"
+    days: int = Field(180, ge=30, le=1000)
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/api/lab/chart")
+async def lab_chart(req: StrategyChartRequest) -> dict:
+    """生成策略买卖信号图，返回可直嵌 <img> 的 data URL。"""
+    from app.ai.feature_engine import FeatureEngine
+    from app.services.market_service import MarketService
+    from app.services.strategy import coerce_strategy_params, get_strategy
+    from app.visualization.charts import ChartService
+
+    def collect() -> dict:
+        df = MarketService().get_kline_df(req.code, "day", req.days)
+        if df is None or df.empty:
+            raise ValueError("未获取到 K 线数据")
+        signaled = get_strategy(
+            req.strategy, **coerce_strategy_params(req.params)
+        ).generate_signals(FeatureEngine().build_features(df))
+        png = ChartService().plot_strategy_signals(
+            signaled,
+            strategy=req.strategy,
+            title=f"{req.code} {req.strategy} 信号图",
+            save=False,
+            show=False,
+            return_bytes=True,
+        )
+        return {
+            "image": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+            "strategy": req.strategy,
+            "code": req.code,
+            "days": req.days,
+            "buys": int((signaled["signal"] == 1).sum()),
+            "sells": int((signaled["signal"] == -1).sum()),
+        }
+
+    try:
+        return ok(await run_in_threadpool(collect))
+    except Exception as e:
+        logger.warning(f"策略信号图生成失败 {req.code}/{req.strategy}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/predict")
