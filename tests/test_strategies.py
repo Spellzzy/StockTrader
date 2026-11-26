@@ -1,5 +1,6 @@
 """回测策略：信号合法性 + 防未来函数"""
 
+import pandas as pd
 import pytest
 
 from app.ai.feature_engine import FeatureEngine
@@ -38,3 +39,38 @@ def test_unknown_strategy_raises():
 
 def test_list_strategies_covers_registry():
     assert {s["name"] for s in list_strategies()} == set(BUILTIN_STRATEGIES)
+
+
+def test_boll_accepts_zone_params():
+    strategy = get_strategy("boll", low_zone=20, high_zone=80)
+    assert strategy.low_zone == 20
+    assert strategy.high_zone == 80
+    assert "P20" in strategy.description and "P80" in strategy.description
+
+
+def test_boll_zone_params_change_signals():
+    df = pd.DataFrame({"boll_pct": [0.10, 0.25, 0.85, 0.70]})
+    default = get_strategy("boll", low_zone=20, high_zone=80).generate_signals(df)
+    strict = get_strategy("boll", low_zone=60, high_zone=80).generate_signals(df)
+    assert default["signal"].tolist() == [0, 1, 0, -1]
+    assert strict["signal"].tolist() == [0, 0, 1, -1]
+
+
+def test_boll_default_keeps_legacy_cross_logic(kline_df):
+    """默认 0/100 必须等价于旧版「穿越上下轨」信号"""
+    featured = FeatureEngine().build_features(kline_df)
+    legacy = featured.copy()
+    legacy["signal"] = 0
+    legacy.loc[
+        (featured["close"] > featured["boll_lower"])
+        & (featured["close"].shift(1) <= featured["boll_lower"].shift(1)),
+        "signal",
+    ] = 1
+    legacy.loc[
+        (featured["close"] < featured["boll_upper"])
+        & (featured["close"].shift(1) >= featured["boll_upper"].shift(1)),
+        "signal",
+    ] = -1
+    assert get_strategy("boll").generate_signals(featured)["signal"].tolist() == (
+        legacy["signal"].tolist()
+    )

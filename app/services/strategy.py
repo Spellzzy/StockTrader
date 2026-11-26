@@ -123,29 +123,58 @@ class RSIOversoldStrategy(BaseStrategy):
 
 
 class BollBandStrategy(BaseStrategy):
-    """布林带突破策略
+    """布林带位置策略
 
-    - 价格跌破下轨后回升: 买入
-    - 价格突破上轨后回落: 卖出
+    - 位置从 `low_zone` 下方回升: 买入
+    - 位置从 `high_zone` 上方回落: 卖出
+
+    位置 = (收盘价 - 下轨) / (上轨 - 下轨) × 100，0=下轨、100=上轨。
+    默认 0/100 保持旧版「跌破下轨后回轨内 / 突破上轨后回落」口径。
     """
 
     name = "boll"
     description = "布林带下轨买入/上轨卖出"
 
+    def __init__(self, low_zone: float = 0.0, high_zone: float = 100.0):
+        self.low_zone = float(low_zone)
+        self.high_zone = float(high_zone)
+        self.description = (
+            f"布林带位置 P{self.low_zone:g} 回升买入 / P{self.high_zone:g} 回落卖出"
+        )
+
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["signal"] = 0
 
-        if "boll_upper" not in df.columns:
-            return df
+        low, high = self.low_zone, self.high_zone
+        if (
+            low == 0
+            and high == 100
+            and {"close", "boll_lower", "boll_upper"}.issubset(df.columns)
+        ):
+            # 默认口径沿用旧版穿越上下轨，避免 boll_pct 的 1e-10  epsilon 造成边界差异
+            buy = (df["close"] > df["boll_lower"]) & (
+                df["close"].shift(1) <= df["boll_lower"].shift(1)
+            )
+            sell = (df["close"] < df["boll_upper"]) & (
+                df["close"].shift(1) >= df["boll_upper"].shift(1)
+            )
+        else:
+            if "boll_pct" in df.columns:
+                pct = df["boll_pct"] * 100  # FeatureEngine 产出的是 0~1
+            elif {"close", "boll_lower", "boll_upper"}.issubset(df.columns):
+                pct = (
+                    (df["close"] - df["boll_lower"])
+                    / (df["boll_upper"] - df["boll_lower"] + 1e-10)
+                    * 100
+                )
+            else:
+                return df
+            buy = (pct > low) & (pct.shift(1) <= low)
+            sell = (pct < high) & (pct.shift(1) >= high)
 
-        # 跌破下轨后反弹回轨内 → 买入
-        bounce_up = (df["close"] > df["boll_lower"]) & (df["close"].shift(1) <= df["boll_lower"].shift(1))
-        # 突破上轨后回落到轨内 → 卖出
-        drop_down = (df["close"] < df["boll_upper"]) & (df["close"].shift(1) >= df["boll_upper"].shift(1))
-
-        df.loc[bounce_up, "signal"] = 1
-        df.loc[drop_down, "signal"] = -1
+        df.loc[buy, "signal"] = 1
+        df.loc[sell, "signal"] = -1
         return df
 
 
